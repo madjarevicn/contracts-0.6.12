@@ -1,20 +1,6 @@
-const _require = require('app-root-path').require
-const { isEthException, awaitTx, waitForSomeTime, currentTime, toBASEDenomination } = _require('/util')
-const encodeCall = require('zos-lib/lib/helpers/encodeCall').default
-const bre = require('@nomiclabs/buidler')
-const { ethers, web3, upgrades } = bre
-const BigNumber = ethers.BigNumber
-const BN = require('bn.js')
+const { ethers, web3, upgrades, expect, BigNumber, isEthException, awaitTx, waitForSomeTime, currentTime, toBASEDenomination } = require('../setup')
 
-let chai = require('chai')
-chai.use(require('chai-bignumber')(BigNumber))
-                .use(require('chai-as-promised'))
-                .use(require("bn-chai")(BN))
-                .should()
-let expect = chai.expect
-
-
-let baseTokenMonetaryPolicy, mockBaseToken, mockTokenPriceOracle, mockMcapOracle, p
+let baseTokenMonetaryPolicy, mockBaseToken, mockTokenPriceOracle, mockMcapOracle, p, MockOracle
 let r, prevEpoch, prevTime
 let accounts, deployer, deployerAddr, user, userAddr, orchestrator
 
@@ -50,7 +36,8 @@ async function setupContracts () {
     await mockBaseToken.deployed()
     mockBaseToken = mockBaseToken.connect(deployer)
 
-    const MockOracle = await ethers.getContractFactory('MockOracle')
+    MockOracle = await ethers.getContractFactory('MockOracle')
+
     mockTokenPriceOracle = await MockOracle.deploy('TokenPriceOracle')
     await mockTokenPriceOracle.deployed()
     mockTokenPriceOracle = mockTokenPriceOracle.connect(deployer)
@@ -369,22 +356,22 @@ describe('BaseTokenMonetaryPolicy:Rebase', async () => {
             await mockExternalData(INITIAL_RATE.sub(1), INITIAL_MCAP, 1000)
             await waitForSomeTime(p, 60)
             r = await awaitTx(baseTokenMonetaryPolicy.connect(orchestrator).rebase())
-            r.events[0].args.requestedSupplyAdjustment.should.equal(0)
+            r.events[6].args.requestedSupplyAdjustment.should.equal(0)
             await waitForSomeTime(p, 60)
 
             await mockExternalData(INITIAL_RATE.add(1), INITIAL_MCAP, 1000)
             r = await awaitTx(baseTokenMonetaryPolicy.connect(orchestrator).rebase())
-            r.events[0].args.requestedSupplyAdjustment.should.equal(0)
+            r.events[6].args.requestedSupplyAdjustment.should.equal(0)
             await waitForSomeTime(p, 60)
 
             await mockExternalData(INITIAL_RATE_5P_MORE.sub(2), INITIAL_MCAP, 1000)
             r = await awaitTx(baseTokenMonetaryPolicy.connect(orchestrator).rebase())
-            r.events[0].args.requestedSupplyAdjustment.should.equal(0)
+            r.events[6].args.requestedSupplyAdjustment.should.equal(0)
             await waitForSomeTime(p, 60)
 
             await mockExternalData(INITIAL_RATE_5P_LESS.add(2), INITIAL_MCAP, 1000)
             r = await awaitTx(baseTokenMonetaryPolicy.connect(orchestrator).rebase())
-            r.events[0].args.requestedSupplyAdjustment.should.equal(0)
+            r.events[6].args.requestedSupplyAdjustment.should.equal(0)
             await waitForSomeTime(p, 60)
         })
     })
@@ -399,19 +386,19 @@ describe('BaseTokenMonetaryPolicy:Rebase', async () => {
             await mockExternalData(MAX_RATE, INITIAL_MCAP, 1000)
             await waitForSomeTime(p, 60)
             r = await awaitTx(baseTokenMonetaryPolicy.connect(orchestrator).rebase())
-            const supplyChange = r.events[0].args.requestedSupplyAdjustment
+            const supplyChange = r.events[6].args.requestedSupplyAdjustment
 
             await waitForSomeTime(p, 60)
 
-            await mockExternalData(MAX_RATE.add(1e17), INITIAL_MCAP, 1000)
+            await mockExternalData(MAX_RATE.add(tenTo18th.div(10)), INITIAL_MCAP, 1000)
             r = await awaitTx(baseTokenMonetaryPolicy.connect(orchestrator).rebase())
-            r.events[0].args.requestedSupplyAdjustment.should.equal(supplyChange)
+            r.events[6].args.requestedSupplyAdjustment.should.equal(supplyChange)
 
             await waitForSomeTime(p, 60)
 
             await mockExternalData(MAX_RATE.mul(2), INITIAL_MCAP, 1000)
             r = await awaitTx(baseTokenMonetaryPolicy.connect(orchestrator).rebase())
-            r.events[0].args.requestedSupplyAdjustment.should.equal(supplyChange)
+            r.events[6].args.requestedSupplyAdjustment.should.equal(supplyChange)
         })
     })
 })
@@ -429,7 +416,7 @@ describe('BaseTokenMonetaryPolicy:Rebase', async () => {
             // Supply is MAX_SUPPLY-1, exchangeRate is 2x resulting in a new supply more than MAX_SUPPLY
             // However, supply is ONLY increased by 1 to MAX_SUPPLY
             r = await awaitTx(baseTokenMonetaryPolicy.connect(orchestrator).rebase())
-            r.events[0].args.requestedSupplyAdjustment.should.equal(1)
+            r.events[6].args.requestedSupplyAdjustment.should.equal(1)
         })
     })
 })
@@ -445,7 +432,7 @@ describe('BaseTokenMonetaryPolicy:Rebase', async () => {
 
         it('should not grow', async () => {
             r = await awaitTx(baseTokenMonetaryPolicy.connect(orchestrator).rebase())
-            r.events[0].args.requestedSupplyAdjustment.should.equal(0)
+            r.events[6].args.requestedSupplyAdjustment.should.equal(0)
         })
     })
 })
@@ -525,7 +512,7 @@ describe('BaseTokenMonetaryPolicy:Rebase', async () => {
         })
 
         it('should emit Rebase with positive requestedSupplyAdjustment', async () => {
-            const log = r.events[0]
+            const log = r.events[6]
             expect(log.event).to.equal('LogRebase')
             expect(log.args.epoch.eq(prevEpoch.add(1))).to.be.true
             log.args.exchangeRate.should.equal(INITIAL_RATE_60P_MORE)
@@ -533,30 +520,29 @@ describe('BaseTokenMonetaryPolicy:Rebase', async () => {
             log.args.requestedSupplyAdjustment.should.equal(20)
         })
 
-        it.only('should call getData from the market oracle', async () => {
-            require('fs').writeFileSync('/tmp/x5', JSON.stringify(r, null, 4))
-            const fnCalled = mockTokenPriceOracle.FunctionCalled().formatter(r.receipt.events[2])
-            expect(fnCalled.args.instanceName).to.equal('TokenPriceOracle')
-            expect(fnCalled.args.functionName).to.equal('getData')
-            expect(fnCalled.args.caller).to.equal(baseTokenMonetaryPolicy.address)
+        it('should call getData from the market oracle', async () => {
+            const fnCalled = MockOracle.interface.decodeEventLog('FunctionCalled', r.events[2].data)
+            expect(fnCalled[0]).to.equal('TokenPriceOracle')
+            expect(fnCalled[1]).to.equal('getData')
+            expect(fnCalled[2]).to.equal(baseTokenMonetaryPolicy.address)
         })
 
         it('should call getData from the mcap oracle', async () => {
-            const fnCalled = mockMcapOracle.FunctionCalled().formatter(r.receipt.events[0])
-            expect(fnCalled.args.instanceName).to.equal('McapOracle')
-            expect(fnCalled.args.functionName).to.equal('getData')
-            expect(fnCalled.args.caller).to.equal(baseTokenMonetaryPolicy.address)
+            const fnCalled = MockOracle.interface.decodeEventLog('FunctionCalled', r.events[0].data)
+            expect(fnCalled[0]).to.equal('McapOracle')
+            expect(fnCalled[1]).to.equal('getData')
+            expect(fnCalled[2]).to.equal(baseTokenMonetaryPolicy.address)
         })
 
         it('should call BaseToken Rebase', async () => {
             prevEpoch = await baseTokenMonetaryPolicy.epoch()
-            const fnCalled = mockBaseToken.FunctionCalled().formatter(r.receipt.events[4])
-            expect(fnCalled.args.instanceName).to.equal('BaseToken')
-            expect(fnCalled.args.functionName).to.equal('rebase')
-            expect(fnCalled.args.caller).to.equal(baseTokenMonetaryPolicy.address)
-            const fnArgs = mockBaseToken.FunctionArguments().formatter(r.receipt.events[5])
-            const parsedFnArgs = Object.keys(fnArgs.args).reduce((m, k) => {
-                return fnArgs.args[k].map(d => d.toNumber()).concat(m)
+            const fnCalled = MockOracle.interface.decodeEventLog('FunctionCalled', r.events[4].data)
+            expect(fnCalled[0]).to.equal('BaseToken')
+            expect(fnCalled[1]).to.equal('rebase')
+            expect(fnCalled[2]).to.equal(baseTokenMonetaryPolicy.address)
+            const fnArgs = MockOracle.interface.decodeEventLog('FunctionArguments', r.events[5].data)
+            const parsedFnArgs = fnArgs.reduce((m, k) => {
+                return k.map(d => d.toNumber()).concat(m)
             }, [ ])
             expect(parsedFnArgs).to.include.members([prevEpoch.toNumber(), 20])
         })
@@ -574,7 +560,7 @@ describe('BaseTokenMonetaryPolicy:Rebase', async () => {
         })
 
         it('should emit Rebase with negative requestedSupplyAdjustment', async () => {
-            const log = r.events[0]
+            const log = r.events[6]
             expect(log.event).to.equal('LogRebase')
             log.args.requestedSupplyAdjustment.should.equal(-10)
         })
@@ -593,7 +579,7 @@ describe('BaseTokenMonetaryPolicy:Rebase', async () => {
         })
 
         it('should emit Rebase with negative requestedSupplyAdjustment', async () => {
-            const log = r.events[0]
+            const log = r.events[6]
             expect(log.event).to.equal('LogRebase')
             log.args.requestedSupplyAdjustment.should.equal(-6)
         })
@@ -612,7 +598,7 @@ describe('BaseTokenMonetaryPolicy:Rebase', async () => {
         })
 
         it('should emit Rebase with positive requestedSupplyAdjustment', async () => {
-            const log = r.events[0]
+            const log = r.events[6]
             expect(log.event).to.equal('LogRebase')
             log.args.requestedSupplyAdjustment.should.equal(9)
         })
@@ -631,7 +617,7 @@ describe('BaseTokenMonetaryPolicy:Rebase', async () => {
         })
 
         it('should emit Rebase with 0 requestedSupplyAdjustment', async () => {
-            const log = r.events[0]
+            const log = r.events[6]
             expect(log.event).to.equal('LogRebase')
             log.args.requestedSupplyAdjustment.should.equal(0)
         })
@@ -680,12 +666,12 @@ describe('BaseTokenMonetaryPolicy:Rebase', async () => {
     describe('when its 5s after the rebase window opens', () => {
         it('should NOT fail', async () => {
             timeToWait = nextRebaseWindowOpenTime.sub(now).add(5)
-            await waitForSomeTime(p, timeToWait.toNumber())
-            await mockExternalData(INITIAL_RATE, INITIAL_MCAP, 1000)
-            expect(await baseTokenMonetaryPolicy.inRebaseWindow()).to.be.true
+            await waitForSomeTime(p, timeToWait.toNumber());
+            await mockExternalData(INITIAL_RATE, INITIAL_MCAP, 1000);
+            expect(await baseTokenMonetaryPolicy.inRebaseWindow()).to.be.true;
             expect(
                 await isEthException(baseTokenMonetaryPolicy.connect(orchestrator).rebase())
-            ).to.be.false
+            ).to.be.false;
             lastRebaseTimestamp = await baseTokenMonetaryPolicy.lastRebaseTimestampSec()
             expect(lastRebaseTimestamp.eq(nextRebaseWindowOpenTime)).to.be.true
         })

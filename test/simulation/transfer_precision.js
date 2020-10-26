@@ -1,105 +1,94 @@
 /*
-  In this truffle script, we generate random cycles of BASE growth and contraction
-  and test the precision of BASE transfers
+    In this buidler script, we generate random cycles of BASE growth and contraction
+    and test the precision of BASE transfers
 
-  During every iteration; percentageGrowth is sampled from a unifrom distribution between [-50%,250%]
-  and the BASE total supply grows/contracts.
+    During every iteration, percentageGrowth is sampled from a unifrom distribution between [-50%,250%]
+    and the BASE total supply grows/contracts.
 
-  In each cycle we test the following guarantees:
-  - If address 'A' transfers x BASE to address 'B'. A's resulting external balance will
-  be decreased by precisely x BASE, and B's external balance will be precisely
-  increased by x BASE.
+    In each cycle we test the following guarantees:
+    - If address 'A' transfers x BASE to address 'B'. A's resulting external balance will
+    be decreased by precisely x BASE, and B's external balance will be precisely
+    increased by x BASE.
 
-  USAGE:
-  npx truffle --network ganacheUnitTest exec ./test/simulation/transfer_precision.js
+    USAGE:
+    buidler run ./test/simulation/transfer_precision.js
 */
 
-// const expect = require('chai').expect;
-// const BaseToken = artifacts.require('BaseToken.sol');
-// const _require = require('app-root-path').require;
-// const BlockchainCaller = _require('/util/blockchain_caller');
-// const chain = new BlockchainCaller(web3);
-// const encodeCall = require('zos-lib/lib/helpers/encodeCall').default;
-// const Stochasm = require('stochasm');
-// const BigNumber = web3.BigNumber;
+const { ethers, web3, upgrades, expect, BigNumber, isEthException, awaitTx, waitForSomeTime, currentTime, toBASEDenomination } = require('../setup')
 
-// const endSupply = new BigNumber(2).pow(128).minus(1);
-// const baseTokenGrowth = new Stochasm({ min: -0.5, max: 2.5, seed: 'baseprotocol.org' });
+const Stochasm = require('stochasm')
 
-// let baseToken, rebaseAmt, inflation, preRebaseSupply, postRebaseSupply;
-// rebaseAmt = new BigNumber(0);
-// preRebaseSupply = new BigNumber(0);
-// postRebaseSupply = new BigNumber(0);
+const endSupply = BigNumber.from(2).pow(128).sub(1)
+const baseTokenGrowth = new Stochasm({ min: -0.5, max: 2.5, seed: 'baseprotocol.org' })
 
-// async function checkBalancesAfterOperation (users, op, chk) {
-//   const _bals = [ ];
-//   const bals = [ ];
-//   let u;
-//   for (u in users) {
-//     if (Object.prototype.hasOwnProperty.call(users, u)) {
-//       _bals.push(await baseToken.balanceOf.call(users[u]));
-//     }
-//   }
-//   await op();
-//   for (u in users) {
-//     if (Object.prototype.hasOwnProperty.call(users, u)) {
-//       bals.push(await baseToken.balanceOf.call(users[u]));
-//     }
-//   }
-//   chk(_bals, bals);
-// }
+let baseToken, rebaseAmt, inflation, preRebaseSupply, postRebaseSupply
+rebaseAmt = BigNumber.from(0)
+preRebaseSupply = BigNumber.from(0)
+postRebaseSupply = BigNumber.from(0)
 
-// async function checkBalancesAfterTransfer (users, tAmt) {
-//   await checkBalancesAfterOperation(users, async function () {
-//     await baseToken.transfer(users[1], tAmt, { from: users[0] });
-//   }, function ([_u0Bal, _u1Bal], [u0Bal, u1Bal]) {
-//     const _sum = _u0Bal.plus(_u1Bal);
-//     const sum = u0Bal.plus(u1Bal);
-//     expect(_sum.eq(sum)).to.be.true;
-//     expect(_u0Bal.minus(tAmt).eq(u0Bal)).to.be.true;
-//     expect(_u1Bal.plus(tAmt).eq(u1Bal)).to.be.true;
-//   });
-// }
+async function checkBalancesAfterOperation(users, op, chk) {
+    const _bals = await Promise.all(
+        users.map(async (user) => baseToken.balanceOf(await user.getAddress()))
+    )
+    await op()
+    const bals = await Promise.all(
+        users.map(async (user) => baseToken.balanceOf(await user.getAddress()))
+    )
+    chk(_bals, bals)
+}
 
-// async function exec () {
-//   const accounts = await chain.getUserAccounts();
-//   const deployer = accounts[0];
-//   const user = accounts[1];
-//   baseToken = await BaseToken.new();
-//   await baseToken.sendTransaction({
-//     data: encodeCall('initialize', ['address'], [deployer]),
-//     from: deployer
-//   });
-//   await baseToken.setMonetaryPolicy(deployer, {from: deployer});
+async function checkBalancesAfterTransfer (users, tAmt) {
+    await checkBalancesAfterOperation(users, async () => {
+        await awaitTx(baseToken.connect(users[0]).transfer(await users[1].getAddress(), tAmt))
+    }, ([_u0Bal, _u1Bal], [u0Bal, u1Bal]) => {
+        const _sum = _u0Bal.add(_u1Bal)
+        const sum = u0Bal.add(u1Bal)
+        expect(_sum.eq(sum)).to.be.true
+        expect(_u0Bal.sub(tAmt).eq(u0Bal)).to.be.true
+        expect(_u1Bal.add(tAmt).eq(u1Bal)).to.be.true
+    })
+}
 
-//   let i = 0;
-//   do {
-//     await baseToken.rebase(i + 1, rebaseAmt, {from: deployer});
-//     postRebaseSupply = await baseToken.totalSupply.call();
-//     i++;
+async function exec() {
+    const accounts = await ethers.getSigners()
+    const deployer = accounts[0]
+    const user = accounts[1]
+    const BaseToken = await ethers.getContractFactory('BaseToken')
+    baseToken = await upgrades.deployProxy(BaseToken, [])
+    await baseToken.deployed()
+    baseToken = baseToken.connect(deployer)
+    await awaitTx(baseToken.setMonetaryPolicy(await deployer.getAddress()))
 
-//     console.log('Rebased iteration', i);
-//     console.log('Rebased by', (rebaseAmt.toString()), 'BASE');
-//     console.log('Total supply is now', postRebaseSupply.toString(), 'BASE');
+    let i = 0
+    do {
+        await awaitTx(baseToken.rebase(i + 1, rebaseAmt))
+        postRebaseSupply = await baseToken.totalSupply()
+        i++
 
-//     console.log('Testing precision of 1c transfer');
-//     await checkBalancesAfterTransfer([deployer, user], 1);
-//     await checkBalancesAfterTransfer([user, deployer], 1);
+        console.log('Rebased iteration', i)
+        console.log('Rebased by', (rebaseAmt.toString()), 'BASE')
+        console.log('Total supply is now', postRebaseSupply.toString(), 'BASE')
 
-//     console.log('Testing precision of max denomination');
-//     const tAmt = (await baseToken.balanceOf.call(deployer));
-//     await checkBalancesAfterTransfer([deployer, user], tAmt);
-//     await checkBalancesAfterTransfer([user, deployer], tAmt);
+        console.log('Testing precision of 1c transfer')
+        await checkBalancesAfterTransfer([deployer, user], 1)
+        await checkBalancesAfterTransfer([user, deployer], 1)
 
-//     preRebaseSupply = await baseToken.totalSupply.call();
-//     inflation = baseTokenGrowth.next().toFixed(5);
-//     rebaseAmt = preRebaseSupply.mul(inflation).dividedToIntegerBy(1);
-//   } while ((await baseToken.totalSupply.call()).plus(rebaseAmt).lt(endSupply));
-// }
+        console.log('Testing precision of max denomination')
+        const tAmt = (await baseToken.balanceOf(await deployer.getAddress()))
+        await checkBalancesAfterTransfer([deployer, user], tAmt)
+        await checkBalancesAfterTransfer([user, deployer], tAmt)
 
-// module.exports = function (done) {
-//   exec().then(done).catch(e => {
-//     console.error(e);
-//     process.exit(1);
-//   });
-// };
+        preRebaseSupply = await baseToken.totalSupply()
+        let next = baseTokenGrowth.next().toFixed(5)
+        console.log(next, '/', next * 100000)
+        inflation = BigNumber.from(Math.trunc(next * 100000))
+        rebaseAmt = preRebaseSupply.mul(inflation).div(100000)
+    } while ((await baseToken.totalSupply()).add(rebaseAmt).lt(endSupply))
+}
+
+exec()
+  .then(() => process.exit(0))
+  .catch(error => {
+    console.error(error)
+    process.exit(1)
+  })

@@ -1,60 +1,54 @@
 /*
-  In this truffle script,
-  During every iteration:
-  * We double the total BASE supply.
-  * We test the following guarantee:
-      - the difference in totalSupply() before and after the rebase(+1) should be exactly 1.
+    In this buidler script,
+    During every iteration:
+    * We double the total BASE supply.
+    * We test the following guarantee:
+            - the difference in totalSupply() before and after the rebase(+1) should be exactly 1.
 
-  USAGE:
-  npx truffle --network ganacheUnitTest exec ./test/simulation/supply_precision.js
+    USAGE:
+    buidler run ./test/simulation/supply_precision.js
 */
 
-// const expect = require('chai').expect;
-// const BaseToken = artifacts.require('BaseToken.sol');
-// const _require = require('app-root-path').require;
-// const BlockchainCaller = _require('/util/blockchain_caller');
-// const chain = new BlockchainCaller(web3);
-// const encodeCall = require('zos-lib/lib/helpers/encodeCall').default;
-// const BigNumber = web3.BigNumber;
+const { ethers, web3, upgrades, expect, BigNumber, isEthException, awaitTx, waitForSomeTime, currentTime, toBASEDenomination } = require('../setup')
 
-// const endSupply = new BigNumber(2).pow(128).minus(1);
+const endSupply = BigNumber.from(2).pow(128).sub(1)
 
-// let baseToken, preRebaseSupply, postRebaseSupply;
-// preRebaseSupply = new BigNumber(0);
-// postRebaseSupply = new BigNumber(0);
+let baseToken, preRebaseSupply, postRebaseSupply
+preRebaseSupply = BigNumber.from(0)
+postRebaseSupply = BigNumber.from(0)
 
-// async function exec () {
-//   const accounts = await chain.getUserAccounts();
-//   const deployer = accounts[0];
-//   baseToken = await BaseToken.new();
-//   await baseToken.sendTransaction({
-//     data: encodeCall('initialize', ['address'], [deployer]),
-//     from: deployer
-//   });
-//   await baseToken.setMonetaryPolicy(deployer, {from: deployer});
+async function exec() {
+    const accounts = await ethers.getSigners()
+    const deployer = accounts[0]
+    const BaseToken = await ethers.getContractFactory('BaseToken')
+    baseToken = await upgrades.deployProxy(BaseToken, [])
+    await baseToken.deployed()
+    baseToken = baseToken.connect(deployer)
+    await awaitTx(baseToken.setMonetaryPolicy(await deployer.getAddress()))
 
-//   let i = 0;
-//   do {
-//     console.log('Iteration', i + 1);
+    let i = 0
+    do {
+        console.log('Iteration', i + 1)
 
-//     preRebaseSupply = await baseToken.totalSupply.call();
-//     await baseToken.rebase(2 * i, 1, {from: deployer});
-//     postRebaseSupply = await baseToken.totalSupply.call();
-//     console.log('Rebased by 1 BASE');
-//     console.log('Total supply is now', postRebaseSupply.toString(), 'BASE');
+        preRebaseSupply = await baseToken.totalSupply()
+        await awaitTx(baseToken.rebase(2 * i, 1))
+        postRebaseSupply = await baseToken.totalSupply()
+        console.log('Rebased by 1 BASE')
+        console.log('Total supply is now', postRebaseSupply.toString(), 'BASE')
 
-//     console.log('Testing precision of supply');
-//     expect(postRebaseSupply.minus(preRebaseSupply).toNumber()).to.eq(1);
+        console.log('Testing precision of supply')
+        expect(postRebaseSupply.sub(preRebaseSupply).toNumber()).to.equal(1)
 
-//     console.log('Doubling supply');
-//     await baseToken.rebase(2 * i + 1, postRebaseSupply, {from: deployer});
-//     i++;
-//   } while ((await baseToken.totalSupply.call()).lt(endSupply));
-// }
+        console.log('Doubling supply')
+        await awaitTx(baseToken.rebase(2 * i + 1, postRebaseSupply))
+        i++
+    } while ((await baseToken.totalSupply()).lt(endSupply))
+}
 
-// module.exports = function (done) {
-//   exec().then(done).catch(e => {
-//     console.error(e);
-//     process.exit(1);
-//   });
-// };
+exec()
+  .then(() => process.exit(0))
+  .catch(error => {
+    console.error(error)
+    process.exit(1)
+  })
+

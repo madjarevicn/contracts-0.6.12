@@ -2,8 +2,8 @@
   "manifestVersion": "3.1",
   "impls": {
     "9e7e9a3e28156bbe906a62e03613e267ea3dfe985f0041031e7f3289c852680d": {
-      "address": "0x7c2C195CD6D34B8F845992d380aADB2730bB9C6F",
-      "txHash": "0xc9e86aed4f8311b98c6b25c9db97458ab0c1b14b140a0b3f9051244edbe3952b",
+      "address": "0x6E6BE4361Ff4A3F8aaBcA83Ef35975b4DeF0D81A",
+      "txHash": "0x0f29d1e3e874153ffba207ac08311cd80d073de8c70f40e135b937fbcd2c7988",
       "layout": {
         "storage": [
           {
@@ -171,8 +171,8 @@
       }
     },
     "8a6954ce6973889f8b1f617842f9b0143dba0a837f76f3ea518c019142520918": {
-      "address": "0x29bA71400bcE062e3326F312488Ebcd279a23171",
-      "txHash": "0x997b8bd1a854212064bcc6cf85084954b8b7a368fe397f9267eadaffac75262e",
+      "address": "0xF5742a599a0F4520089cbf2EBBa66Bb4F471B85F",
+      "txHash": "0xff9038fa7a22d92dce748fbcec4fdc1f6b372cf534c81b0259efcaab5a884e91",
       "layout": {
         "storage": [
           {
@@ -190,8 +190,8 @@
       }
     },
     "5b26acca37bf5d1c9908cb8e45f835aeb91b689ab1e5c5062ef73b57e1ce21ff": {
-      "address": "0x7167f60105e9C6dd71bd3975c618b29ef939FF23",
-      "txHash": "0x5b64f060a0a02e2e098ec6ddf24bbe1952f94d4e71d3bf04b320be542d5ca892",
+      "address": "0xbe66dC9DFEe580ED968403e35dF7b5159f873df8",
+      "txHash": "0x79ee55524e26e9efe9e3441fc681ff5a4572da0d753e901a72dc62b32279d666",
       "layout": {
         "storage": [
           {
@@ -327,10 +327,128 @@
           }
         }
       }
+    },
+    "40a1521352faba65390d54c9336f2ae4039f8b371c4fbb7c5e316370daa010f7": {
+      "address": "0xFa74D3B94a5A13b759129A66DdEa29D503079295",
+      "txHash": "0x4000647a33b10b82ce4ef33d3e7fd863b7b1be8c04f6b250c07ade42a96a4ebd",
+      "layout": {
+        "storage": [],
+        "types": {}
+      }
+    },
+    "f732f1de8006435c1132ffae98e9c6aed0cbfef4f58259a470036823ff57087f": {
+      "address": "0x8858eeB3DfffA017D4BCE9801D340D36Cf895CCf",
+      "txHash": "0x9724a4d465925e7f259949c8e95d5465f71f40cdafaf28434d86f2560089658b",
+      "layout": {
+        "storage": [
+          {
+            "contract": "Initializable",
+            "label": "initialized",
+            "type": "t_bool",
+            "src": "@openzeppelin/upgrades/contracts/Initializable.sol:21"
+          },
+          {
+            "contract": "Initializable",
+            "label": "initializing",
+            "type": "t_bool",
+            "src": "@openzeppelin/upgrades/contracts/Initializable.sol:26"
+          },
+          {
+            "contract": "Initializable",
+            "label": "______gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/upgrades/contracts/Initializable.sol:61"
+          },
+          {
+            "contract": "ContextUpgradeSafe",
+            "label": "__gap",
+            "type": "t_array(t_uint256)50_storage",
+            "src": "@openzeppelin/contracts-ethereum-package/contracts/GSN/Context.sol:37"
+          },
+          {
+            "contract": "OwnableUpgradeSafe",
+            "label": "_owner",
+            "type": "t_address",
+            "src": "@openzeppelin/contracts-ethereum-package/contracts/access/Ownable.sol:18"
+          },
+          {
+            "contract": "OwnableUpgradeSafe",
+            "label": "__gap",
+            "type": "t_array(t_uint256)49_storage",
+            "src": "@openzeppelin/contracts-ethereum-package/contracts/access/Ownable.sol:78"
+          },
+          {
+            "contract": "BaseTokenOrchestrator",
+            "label": "transactionEnabled",
+            "type": "t_array(t_bool)dyn_storage",
+            "src": "contracts/BaseTokenOrchestrator.sol:18"
+          },
+          {
+            "contract": "BaseTokenOrchestrator",
+            "label": "transactionDestination",
+            "type": "t_array(t_address)dyn_storage",
+            "src": "contracts/BaseTokenOrchestrator.sol:19"
+          },
+          {
+            "contract": "BaseTokenOrchestrator",
+            "label": "transactionData",
+            "type": "t_array(t_bytes_storage)dyn_storage",
+            "src": "contracts/BaseTokenOrchestrator.sol:20"
+          },
+          {
+            "contract": "BaseTokenOrchestrator",
+            "label": "policy",
+            "type": "t_contract(BaseTokenMonetaryPolicy)9926",
+            "src": "contracts/BaseTokenOrchestrator.sol:22"
+          }
+        ],
+        "types": {
+          "t_array(t_bool)dyn_storage": {
+            "label": "bool[]"
+          },
+          "t_array(t_address)dyn_storage": {
+            "label": "address[]"
+          },
+          "t_array(t_bytes_storage)dyn_storage": {
+            "label": "bytes[]"
+          },
+          "t_contract(BaseTokenMonetaryPolicy)9926": {
+            "label": "contract BaseTokenMonetaryPolicy"
+          },
+          "t_address": {
+            "label": "address"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]"
+          },
+          "t_array(t_uint256)50_storage": {
+            "label": "uint256[50]"
+          },
+          "t_bool": {
+            "label": "bool"
+          }
+        }
+      }
+    },
+    "e13be35b0fe18af47d882c9721e3fcb133de5bb4db59ae0b1ae73ee2f9c26e2b": {
+      "address": "0x8D7178EC415c2C7E6F61789fb6781312cC9d4f2A",
+      "txHash": "0xba021a4b2877535faa78a0844986a3dfea155b7aba8b5ed47182efc6c88b7b56",
+      "layout": {
+        "storage": [],
+        "types": {}
+      }
+    },
+    "60826bcfc9a0514a7eb69821e367855b3ee37d67f06ed1f727367bf6705f01e0": {
+      "address": "0xE9f1F14f726c86b407118081fb397FC24420c008",
+      "txHash": "0xee46028c6f498a0fb273d8c0a81c2ed7d5e1988c073638fddbfdea2f1e4611e7",
+      "layout": {
+        "storage": [],
+        "types": {}
+      }
     }
   },
   "admin": {
-    "address": "0x8858eeB3DfffA017D4BCE9801D340D36Cf895CCf",
-    "txHash": "0xfbbe283638068050e860f4b5234b487c5e1bae6923336922418a504886e49d1e"
+    "address": "0x0078371BDeDE8aAc7DeBfFf451B74c5EDB385Af7",
+    "txHash": "0x6a4360699190ea9099cf237111b334891d97ae0aedc350b3e9193153c53207e5"
   }
 }

@@ -1,52 +1,44 @@
-// const UInt256LibMock = artifacts.require('UInt256LibMock');
+const { ethers, web3, upgrades, expect, BigNumber, isEthException, awaitTx, waitForSomeTime, currentTime, toBASEDenomination } = require('../setup')
 
-// const BigNumber = web3.BigNumber;
-// const _require = require('app-root-path').require;
-// const BlockchainCaller = _require('/util/blockchain_caller');
-// const chain = new BlockchainCaller(web3);
+describe('UInt256Lib', () => {
+    const MAX_INT256 = BigNumber.from(2).pow(255).sub(1)
 
-// require('chai')
-//   .use(require('chai-bignumber')(BigNumber))
-//   .should();
+    let UInt256Lib
 
-// contract('UInt256Lib', () => {
-//   const MAX_INT256 = new BigNumber(2).pow(255).minus(1);
+    beforeEach(async () => {
+        const UInt256LibMock = await ethers.getContractFactory('UInt256LibMock')
+        UInt256Lib = await UInt256LibMock.deploy()
+    })
 
-//   let UInt256Lib;
+    async function returnVal (tx) {
+        return (await awaitTx(tx)).events[0].args.val
+    }
 
-//   beforeEach(async function () {
-//     UInt256Lib = await UInt256LibMock.new();
-//   });
+    describe('toInt256Safe', () => {
+        describe('when then number is more than MAX_INT256', () => {
+            it('should fail', async () => {
+                expect(
+                    await isEthException(UInt256Lib.toInt256Safe(MAX_INT256.add(1)))
+                ).to.be.true
+            })
+        })
 
-//   async function returnVal (tx) {
-//     return (await tx).logs[0].args.val;
-//   }
+        describe('when then number is MAX_INT256', () => {
+            it('converts int to uint256 safely', async () => {
+                (await returnVal(UInt256Lib.toInt256Safe(MAX_INT256))).should.equal(MAX_INT256)
+            })
+        })
 
-//   describe('toInt256Safe', function () {
-//     describe('when then number is more than MAX_INT256', () => {
-//       it('should fail', async function () {
-//         expect(
-//           await chain.isEthException(UInt256Lib.toInt256Safe(MAX_INT256.plus(1)))
-//         ).to.be.true;
-//       });
-//     });
+        describe('when then number is less than MAX_INT256', () => {
+            it('converts int to uint256 safely', async () => {
+                (await returnVal(UInt256Lib.toInt256Safe(MAX_INT256.sub(1)))).should.equal(MAX_INT256.sub(1))
+            })
+        })
 
-//     describe('when then number is MAX_INT256', () => {
-//       it('converts int to uint256 safely', async function () {
-//         (await returnVal(UInt256Lib.toInt256Safe(MAX_INT256))).should.be.bignumber.eq(MAX_INT256);
-//       });
-//     });
-
-//     describe('when then number is less than MAX_INT256', () => {
-//       it('converts int to uint256 safely', async function () {
-//         (await returnVal(UInt256Lib.toInt256Safe(MAX_INT256.minus(1)))).should.be.bignumber.eq(MAX_INT256.minus(1));
-//       });
-//     });
-
-//     describe('when then number is 0', () => {
-//       it('converts int to uint256 safely', async function () {
-//         (await returnVal(UInt256Lib.toInt256Safe(0))).should.be.bignumber.eq(0);
-//       });
-//     });
-//   });
-// });
+        describe('when then number is 0', () => {
+            it('converts int to uint256 safely', async () => {
+                (await returnVal(UInt256Lib.toInt256Safe(0))).should.equal(0)
+            })
+        })
+    })
+})

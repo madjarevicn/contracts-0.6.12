@@ -1,344 +1,361 @@
-// const MockDownstream = artifacts.require('MockDownstream.sol');
-// const MockBaseTokenMonetaryPolicy = artifacts.require('MockBaseTokenMonetaryPolicy.sol');
-// const BaseTokenOrchestrator = artifacts.require('BaseTokenOrchestrator.sol');
-// const RebaseCallerContract = artifacts.require('RebaseCallerContract.sol');
-// const ConstructorRebaseCallerContract = artifacts.require('ConstructorRebaseCallerContract.sol');
+const { expectRevert } = require('@openzeppelin/test-helpers')
+const { ethers, web3, upgrades, expect, BigNumber, isEthException, awaitTx, waitForSomeTime, currentTime, toBASEDenomination } = require('../setup')
 
-// const BigNumber = web3.BigNumber;
-// const _require = require('app-root-path').require;
-// const BlockchainCaller = _require('/util/blockchain_caller');
-// const chain = new BlockchainCaller(web3);
-// const {expectRevert} = require('@openzeppelin/test-helpers');
+let orchestrator, MockBaseTokenMonetaryPolicy, mockBaseTokenMonetaryPolicy, MockDownstream, mockDownstream
+let r
+let deployer, deployerAddr, user, userAddr
 
-// require('chai')
-//   .use(require('chai-bignumber')(BigNumber))
-//   .should();
+async function setupContracts () {
+    accounts = await ethers.getSigners()
+    deployer = accounts[0]
+    deployerAddr = await deployer.getAddress()
+    user = accounts[1]
+    userAddr = await user.getAddress()
+    p = deployer.provider
 
-// let orchestrator, mockPolicy, mockDownstream;
-// let r;
-// let deployer, user;
+    await waitForSomeTime(p, 86400)
 
-// async function setupContracts () {
-//   await chain.waitForSomeTime(86400);
-//   const accounts = await chain.getUserAccounts();
-//   deployer = accounts[0];
-//   user = accounts[1];
-//   mockPolicy = await MockBaseTokenMonetaryPolicy.new();
-//   orchestrator = await BaseTokenOrchestrator.new(mockPolicy.address);
-//   mockDownstream = await MockDownstream.new();
-// }
+    MockBaseTokenMonetaryPolicy = await ethers.getContractFactory('MockBaseTokenMonetaryPolicy')
+    mockBaseTokenMonetaryPolicy = await MockBaseTokenMonetaryPolicy.deploy()
+    await mockBaseTokenMonetaryPolicy.deployed()
+    mockBaseTokenMonetaryPolicy = mockBaseTokenMonetaryPolicy.connect(deployer)
 
-// contract('BaseTokenOrchestrator', function (accounts) {
-//   before('setup BaseTokenOrchestrator contract', setupContracts);
+    const BaseTokenOrchestrator = await ethers.getContractFactory('BaseTokenOrchestrator')
+    orchestrator = await upgrades.deployProxy(BaseTokenOrchestrator, [mockBaseTokenMonetaryPolicy.address])
+    await orchestrator.deployed()
+    orchestrator = orchestrator.connect(deployer)
 
-//   describe('when sent ether', async function () {
-//     it('should reject', async function () {
-//       expect(
-//         await chain.isEthException(orchestrator.sendTransaction({ from: user, value: 1 }))
-//       ).to.be.true;
-//     });
-//   });
+    MockDownstream = await ethers.getContractFactory('MockDownstream')
+    mockDownstream = await MockDownstream.deploy()
+    await mockDownstream.deployed()
+    mockDownstream = mockDownstream.connect(deployer)
+}
 
-//   describe('when rebase called by a contract', function () {
-//     it('should fail', async function () {
-//       const rebaseCallerContract = await RebaseCallerContract.new();
-//       expect(
-//         await chain.isEthException(rebaseCallerContract.callRebase(orchestrator.address))
-//       ).to.be.true;
-//     });
-//   });
+describe('BaseTokenOrchestrator', () => {
+    before('setup BaseTokenOrchestrator contract', setupContracts)
 
-//   describe('when rebase called by a contract which is being constructed', function () {
-//     it('should fail', async function () {
-//       expect(
-//         await chain.isEthException(ConstructorRebaseCallerContract.new(orchestrator.address))
-//       ).to.be.true;
-//     });
-//   });
+    describe('when sent ether', async () => {
+        it('should reject', async () => {
+            expect(
+                await isEthException(user.sendTransaction({ to: orchestrator.address, value: 1 }))
+            ).to.be.true
+        })
+    })
 
-//   describe('when transaction list is empty', async function () {
-//     before('calling rebase', async function () {
-//       r = await orchestrator.rebase();
-//     });
+    describe('when rebase called by a contract', () => {
+        it('should fail', async () => {
+            const RebaseCallerContract = await ethers.getContractFactory('RebaseCallerContract')
+            rebaseCallerContract = await RebaseCallerContract.deploy()
+            await rebaseCallerContract.deployed()
+            rebaseCallerContract = rebaseCallerContract.connect(deployer)
+            expect(
+                await isEthException(rebaseCallerContract.callRebase(orchestrator.address))
+            ).to.be.true
+        })
+    })
 
-//     it('should have no transactions', async function () {
-//       (await orchestrator.transactionsSize.call()).should.be.bignumber.eq(0);
-//     });
+    describe('when rebase called by a contract which is being constructed', () => {
+        it('should fail', async () => {
+            const ConstructorRebaseCallerContract = await ethers.getContractFactory('ConstructorRebaseCallerContract')
+            // constructorRebaseCallerContract = await upgrades.deployProxy(ConstructorRebaseCallerContract, [mockBaseTokenMonetaryPolicy.address])
+            // await constructorRebaseCallerContract.deployed()
+            expect(
+                await isEthException(ConstructorRebaseCallerContract.deploy(orchestrator.address))
+            ).to.be.true
+        })
+    })
 
-//     it('should call rebase on policy', async function () {
-//       const fnCalled = mockPolicy.FunctionCalled().formatter(r.receipt.logs[0]);
-//       expect(fnCalled.args.instanceName).to.eq('BaseTokenMonetaryPolicy');
-//       expect(fnCalled.args.functionName).to.eq('rebase');
-//       expect(fnCalled.args.caller).to.eq(orchestrator.address);
-//     });
+    describe('when transaction list is empty', async () => {
+        before('calling rebase', async () => {
+            r = await awaitTx(orchestrator.rebase())
+        })
 
-//     it('should not have any subsequent logs', async function () {
-//       expect(r.receipt.logs.length).to.eq(1);
-//     });
-//   });
+        it('should have no transactions', async () => {
+            (await orchestrator.transactionsSize()).should.equal(0)
+        })
 
-//   describe('when there is a single transaction', async function () {
-//     before('adding a transaction', async function () {
-//       const updateOneArgEncoded = mockDownstream.contract.updateOneArg.getData(12345);
-//       orchestrator.addTransaction(mockDownstream.address, updateOneArgEncoded, {from: deployer});
-//       r = await orchestrator.rebase();
-//     });
+        it('should call rebase on policy', async () => {
+            const fnCalled = MockBaseTokenMonetaryPolicy.interface.decodeEventLog('FunctionCalled', r.events[0].data)
+            expect(fnCalled[0]).to.equal('BaseTokenMonetaryPolicy')
+            expect(fnCalled[1]).to.equal('rebase')
+            expect(fnCalled[2]).to.equal(orchestrator.address)
+        })
 
-//     it('should have 1 transaction', async function () {
-//       (await orchestrator.transactionsSize.call()).should.be.bignumber.eq(1);
-//     });
+        it('should not have any subsequent logs', async () => {
+            expect(r.events.length).to.equal(1)
+        })
+    })
 
-//     it('should call rebase on policy', async function () {
-//       const fnCalled = mockPolicy.FunctionCalled().formatter(r.receipt.logs[0]);
-//       expect(fnCalled.args.instanceName).to.eq('BaseTokenMonetaryPolicy');
-//       expect(fnCalled.args.functionName).to.eq('rebase');
-//       expect(fnCalled.args.caller).to.eq(orchestrator.address);
-//     });
+    describe('when there is a single transaction', async () => {
+        before('adding a transaction', async () => {
+            const updateOneArgEncoded = MockDownstream.interface.encodeFunctionData('updateOneArg', [12345])
+            await awaitTx(orchestrator.connect(deployer).addTransaction(mockDownstream.address, updateOneArgEncoded))
+            r = await awaitTx(orchestrator.rebase())
+        })
 
-//     it('should call the transaction', async function () {
-//       const fnCalled = mockDownstream.FunctionCalled().formatter(r.receipt.logs[1]);
-//       expect(fnCalled.args.instanceName).to.eq('MockDownstream');
-//       expect(fnCalled.args.functionName).to.eq('updateOneArg');
-//       expect(fnCalled.args.caller).to.eq(orchestrator.address);
+        it('should have 1 transaction', async () => {
+            (await orchestrator.transactionsSize()).should.equal(1)
+        })
 
-//       const fnArgs = mockDownstream.FunctionArguments().formatter(r.receipt.logs[2]);
-//       const parsedFnArgs = Object.keys(fnArgs.args).reduce((m, k) => {
-//         return fnArgs.args[k].map(d => d.toNumber()).concat(m);
-//       }, [ ]);
-//       expect(parsedFnArgs).to.eql([12345]);
-//     });
+        it('should call rebase on policy', async () => {
+            const fnCalled = MockBaseTokenMonetaryPolicy.interface.decodeEventLog('FunctionCalled', r.events[0].data)
+            expect(fnCalled[0]).to.equal('BaseTokenMonetaryPolicy')
+            expect(fnCalled[1]).to.equal('rebase')
+            expect(fnCalled[2]).to.equal(orchestrator.address)
+        })
 
-//     it('should not have any subsequent logs', async function () {
-//       expect(r.receipt.logs.length).to.eq(3);
-//     });
-//   });
+        it('should call the transaction', async () => {
+            const fnCalled = MockDownstream.interface.decodeEventLog('FunctionCalled', r.events[1].data)
+            expect(fnCalled[0]).to.equal('MockDownstream')
+            expect(fnCalled[1]).to.equal('updateOneArg')
+            expect(fnCalled[2]).to.equal(orchestrator.address)
 
-//   describe('when there are two transactions', async function () {
-//     before('adding a transaction', async function () {
-//       const updateTwoArgsEncoded = mockDownstream.contract.updateTwoArgs.getData(12345, 23456);
-//       orchestrator.addTransaction(mockDownstream.address, updateTwoArgsEncoded, {from: deployer});
-//       r = await orchestrator.rebase();
-//     });
+            const fnArgs = MockDownstream.interface.decodeEventLog('FunctionArguments', r.events[2].data)
+            const parsedFnArgs = fnArgs.reduce((m, k) => {
+                return k.map(d => d.toNumber()).concat(m)
+            }, [])
+            expect(parsedFnArgs).to.have.lengthOf(1)
+            expect(parsedFnArgs[0]).to.equal(12345)
+        })
 
-//     it('should have 2 transactions', async function () {
-//       (await orchestrator.transactionsSize.call()).should.be.bignumber.eq(2);
-//     });
+        it('should not have any subsequent logs', async () => {
+            expect(r.logs.length).to.equal(3)
+        })
+    })
 
-//     it('should call rebase on policy', async function () {
-//       const fnCalled = mockPolicy.FunctionCalled().formatter(r.receipt.logs[0]);
-//       expect(fnCalled.args.instanceName).to.eq('BaseTokenMonetaryPolicy');
-//       expect(fnCalled.args.functionName).to.eq('rebase');
-//       expect(fnCalled.args.caller).to.eq(orchestrator.address);
-//     });
+    describe('when there are two transactions', async () => {
+        before('adding a transaction', async () => {
+            const updateTwoArgsEncoded = MockDownstream.interface.encodeFunctionData('updateTwoArgs', [12345, 23456])
+            await awaitTx(orchestrator.addTransaction(mockDownstream.address, updateTwoArgsEncoded))
+            r = await awaitTx(orchestrator.rebase())
+        })
 
-//     it('should call first transaction', async function () {
-//       const fnCalled = mockDownstream.FunctionCalled().formatter(r.receipt.logs[1]);
-//       expect(fnCalled.args.instanceName).to.eq('MockDownstream');
-//       expect(fnCalled.args.functionName).to.eq('updateOneArg');
-//       expect(fnCalled.args.caller).to.eq(orchestrator.address);
+        it('should have 2 transactions', async () => {
+            (await orchestrator.transactionsSize()).should.equal(2)
+        })
 
-//       const fnArgs = mockDownstream.FunctionArguments().formatter(r.receipt.logs[2]);
-//       const parsedFnArgs = Object.keys(fnArgs.args).reduce((m, k) => {
-//         return fnArgs.args[k].map(d => d.toNumber()).concat(m);
-//       }, [ ]);
-//       expect(parsedFnArgs).to.eql([12345]);
-//     });
+        it('should call rebase on policy', async () => {
+            const fnCalled = MockBaseTokenMonetaryPolicy.interface.decodeEventLog('FunctionCalled', r.events[0].data)
+            expect(fnCalled[0]).to.equal('BaseTokenMonetaryPolicy')
+            expect(fnCalled[1]).to.equal('rebase')
+            expect(fnCalled[2]).to.equal(orchestrator.address)
+        })
 
-//     it('should call second transaction', async function () {
-//       const fnCalled = mockDownstream.FunctionCalled().formatter(r.receipt.logs[3]);
-//       expect(fnCalled.args.instanceName).to.eq('MockDownstream');
-//       expect(fnCalled.args.functionName).to.eq('updateTwoArgs');
-//       expect(fnCalled.args.caller).to.eq(orchestrator.address);
+        it('should call first transaction', async () => {
+            const fnCalled = MockDownstream.interface.decodeEventLog('FunctionCalled', r.events[1].data)
+            expect(fnCalled[0]).to.equal('MockDownstream')
+            expect(fnCalled[1]).to.equal('updateOneArg')
+            expect(fnCalled[2]).to.equal(orchestrator.address)
 
-//       const fnArgs = mockDownstream.FunctionArguments().formatter(r.receipt.logs[4]);
-//       const parsedFnArgs = Object.keys(fnArgs.args).reduce((m, k) => {
-//         return fnArgs.args[k].map(d => d.toNumber()).concat(m);
-//       }, [ ]);
-//       expect(parsedFnArgs).to.eql([23456, 12345]);
-//     });
+            const fnArgs = MockDownstream.interface.decodeEventLog('FunctionArguments', r.events[2].data)
+            const parsedFnArgs = fnArgs.reduce((m, k) => {
+                return k.map(d => d.toNumber()).concat(m)
+            }, [])
+            expect(parsedFnArgs).to.have.lengthOf(1)
+            expect(parsedFnArgs[0]).to.equal(12345)
+        })
 
-//     it('should not have any subsequent logs', async function () {
-//       expect(r.receipt.logs.length).to.eq(5);
-//     });
-//   });
+        it('should call second transaction', async () => {
+            const fnCalled = MockDownstream.interface.decodeEventLog('FunctionCalled', r.events[3].data)
+            expect(fnCalled[0]).to.equal('MockDownstream')
+            expect(fnCalled[1]).to.equal('updateTwoArgs')
+            expect(fnCalled[2]).to.equal(orchestrator.address)
 
-//   describe('when 1st transaction is disabled', async function () {
-//     before('disabling a transaction', async function () {
-//       orchestrator.setTransactionEnabled(0, false);
-//       r = await orchestrator.rebase();
-//     });
+            const fnArgs = MockDownstream.interface.decodeEventLog('FunctionArguments', r.events[4].data)
+            const parsedFnArgs = fnArgs.reduce((m, k) => {
+                return k.map(d => d.toNumber()).concat(m)
+            }, [])
+            expect(parsedFnArgs).to.have.lengthOf(2)
+            expect(parsedFnArgs[0]).to.equal(23456)
+            expect(parsedFnArgs[1]).to.equal(12345)
+        })
 
-//     it('should have 2 transactions', async function () {
-//       (await orchestrator.transactionsSize.call()).should.be.bignumber.eq(2);
-//     });
+        it('should not have any subsequent logs', async () => {
+            expect(r.logs.length).to.equal(5)
+        })
+    })
 
-//     it('should call rebase on policy', async function () {
-//       const fnCalled = mockPolicy.FunctionCalled().formatter(r.receipt.logs[0]);
-//       expect(fnCalled.args.instanceName).to.eq('BaseTokenMonetaryPolicy');
-//       expect(fnCalled.args.functionName).to.eq('rebase');
-//       expect(fnCalled.args.caller).to.eq(orchestrator.address);
-//     });
+    describe('when 1st transaction is disabled', async () => {
+        before('disabling a transaction', async () => {
+            await awaitTx(orchestrator.setTransactionEnabled(0, false))
+            r = await awaitTx(orchestrator.rebase())
+        })
 
-//     it('should call second transaction', async function () {
-//       const fnCalled = mockDownstream.FunctionCalled().formatter(r.receipt.logs[1]);
-//       expect(fnCalled.args.instanceName).to.eq('MockDownstream');
-//       expect(fnCalled.args.functionName).to.eq('updateTwoArgs');
-//       expect(fnCalled.args.caller).to.eq(orchestrator.address);
+        it('should have 2 transactions', async () => {
+            (await orchestrator.transactionsSize()).should.equal(2)
+        })
 
-//       const fnArgs = mockDownstream.FunctionArguments().formatter(r.receipt.logs[2]);
-//       const parsedFnArgs = Object.keys(fnArgs.args).reduce((m, k) => {
-//         return fnArgs.args[k].map(d => d.toNumber()).concat(m);
-//       }, [ ]);
-//       expect(parsedFnArgs).to.eql([23456, 12345]);
-//     });
+        it('should call rebase on policy', async () => {
+            const fnCalled = MockBaseTokenMonetaryPolicy.interface.decodeEventLog('FunctionCalled', r.events[0].data)
+            expect(fnCalled[0]).to.equal('BaseTokenMonetaryPolicy')
+            expect(fnCalled[1]).to.equal('rebase')
+            expect(fnCalled[2]).to.equal(orchestrator.address)
+        })
 
-//     it('should not have any subsequent logs', async function () {
-//       expect(r.receipt.logs.length).to.eq(3);
-//     });
-//   });
+        it('should call second transaction', async () => {
+            const fnCalled = MockDownstream.interface.decodeEventLog('FunctionCalled', r.events[1].data)
+            expect(fnCalled[0]).to.equal('MockDownstream')
+            expect(fnCalled[1]).to.equal('updateTwoArgs')
+            expect(fnCalled[2]).to.equal(orchestrator.address)
 
-//   describe('when a transaction is removed', async function () {
-//     before('removing 1st transaction', async function () {
-//       orchestrator.removeTransaction(0);
-//       r = await orchestrator.rebase();
-//     });
+            const fnArgs = MockDownstream.interface.decodeEventLog('FunctionArguments', r.events[2].data)
+            const parsedFnArgs = fnArgs.reduce((m, k) => {
+                return k.map(d => d.toNumber()).concat(m)
+            }, [])
+            expect(parsedFnArgs).to.have.lengthOf(2)
+            expect(parsedFnArgs[0]).to.equal(23456)
+            expect(parsedFnArgs[1]).to.equal(12345)
+        })
 
-//     it('should have 1 transaction', async function () {
-//       (await orchestrator.transactionsSize.call()).should.be.bignumber.eq(1);
-//     });
+        it('should not have any subsequent logs', async () => {
+            expect(r.logs.length).to.equal(3)
+        })
+    })
 
-//     it('should call rebase on policy', async function () {
-//       const fnCalled = mockPolicy.FunctionCalled().formatter(r.receipt.logs[0]);
-//       expect(fnCalled.args.instanceName).to.eq('BaseTokenMonetaryPolicy');
-//       expect(fnCalled.args.functionName).to.eq('rebase');
-//       expect(fnCalled.args.caller).to.eq(orchestrator.address);
-//     });
+    describe('when a transaction is removed', async () => {
+        before('removing 1st transaction', async () => {
+            orchestrator.removeTransaction(0)
+            r = await awaitTx(orchestrator.rebase())
+        })
 
-//     it('should call the transaction', async function () {
-//       const fnCalled = mockDownstream.FunctionCalled().formatter(r.receipt.logs[1]);
-//       expect(fnCalled.args.instanceName).to.eq('MockDownstream');
-//       expect(fnCalled.args.functionName).to.eq('updateTwoArgs');
-//       expect(fnCalled.args.caller).to.eq(orchestrator.address);
+        it('should have 1 transaction', async () => {
+            (await orchestrator.transactionsSize()).should.equal(1)
+        })
 
-//       const fnArgs = mockDownstream.FunctionArguments().formatter(r.receipt.logs[2]);
-//       const parsedFnArgs = Object.keys(fnArgs.args).reduce((m, k) => {
-//         return fnArgs.args[k].map(d => d.toNumber()).concat(m);
-//       }, [ ]);
-//       expect(parsedFnArgs).to.eql([23456, 12345]);
-//     });
+        it('should call rebase on policy', async () => {
+            const fnCalled = MockBaseTokenMonetaryPolicy.interface.decodeEventLog('FunctionCalled', r.events[0].data)
+            expect(fnCalled[0]).to.equal('BaseTokenMonetaryPolicy')
+            expect(fnCalled[1]).to.equal('rebase')
+            expect(fnCalled[2]).to.equal(orchestrator.address)
+        })
 
-//     it('should not have any subsequent logs', async function () {
-//       expect(r.receipt.logs.length).to.eq(3);
-//     });
-//   });
+        it('should call the transaction', async () => {
+            const fnCalled = MockDownstream.interface.decodeEventLog('FunctionCalled', r.events[1].data)
+            expect(fnCalled[0]).to.equal('MockDownstream')
+            expect(fnCalled[1]).to.equal('updateTwoArgs')
+            expect(fnCalled[2]).to.equal(orchestrator.address)
 
-//   describe('when all transactions are removed', async function () {
-//     before('removing 1st transaction', async function () {
-//       orchestrator.removeTransaction(0);
-//       r = await orchestrator.rebase();
-//     });
+            const fnArgs = MockDownstream.interface.decodeEventLog('FunctionArguments', r.events[2].data)
+            const parsedFnArgs = fnArgs.reduce((m, k) => {
+                return k.map(d => d.toNumber()).concat(m)
+            }, [])
+            expect(parsedFnArgs).to.have.lengthOf(2)
+            expect(parsedFnArgs[0]).to.equal(23456)
+            expect(parsedFnArgs[1]).to.equal(12345)
+        })
 
-//     it('should have 0 transactions', async function () {
-//       (await orchestrator.transactionsSize.call()).should.be.bignumber.eq(0);
-//     });
+        it('should not have any subsequent logs', async () => {
+            expect(r.logs.length).to.equal(3)
+        })
+    })
 
-//     it('should call rebase on policy', async function () {
-//       const fnCalled = mockPolicy.FunctionCalled().formatter(r.receipt.logs[0]);
-//       expect(fnCalled.args.instanceName).to.eq('BaseTokenMonetaryPolicy');
-//       expect(fnCalled.args.functionName).to.eq('rebase');
-//       expect(fnCalled.args.caller).to.eq(orchestrator.address);
-//     });
+    describe('when all transactions are removed', async () => {
+        before('removing 1st transaction', async () => {
+            orchestrator.removeTransaction(0)
+            r = await awaitTx(orchestrator.rebase())
+        })
 
-//     it('should not have any subsequent logs', async function () {
-//       expect(r.receipt.logs.length).to.eq(1);
-//     });
-//   });
+        it('should have 0 transactions', async () => {
+            (await orchestrator.transactionsSize()).should.equal(0)
+        })
 
-//   describe('when a transaction reverts', async function () {
-//     before('adding 3 transactions', async function () {
-//       const updateOneArgEncoded = mockDownstream.contract.updateOneArg.getData(123);
-//       orchestrator.addTransaction(mockDownstream.address, updateOneArgEncoded, {from: deployer});
+        it('should call rebase on policy', async () => {
+            const fnCalled = MockBaseTokenMonetaryPolicy.interface.decodeEventLog('FunctionCalled', r.events[0].data)
+            expect(fnCalled[0]).to.equal('BaseTokenMonetaryPolicy')
+            expect(fnCalled[1]).to.equal('rebase')
+            expect(fnCalled[2]).to.equal(orchestrator.address)
+        })
 
-//       const revertsEncoded = mockDownstream.contract.reverts.getData();
-//       orchestrator.addTransaction(mockDownstream.address, revertsEncoded, {from: deployer});
+        it('should not have any subsequent logs', async () => {
+            expect(r.logs.length).to.equal(1)
+        })
+    })
 
-//       const updateTwoArgsEncoded = mockDownstream.contract.updateTwoArgs.getData(12345, 23456);
-//       orchestrator.addTransaction(mockDownstream.address, updateTwoArgsEncoded, {from: deployer});
-//       await expectRevert.unspecified(orchestrator.rebase());
-//     });
+    describe('when a transaction reverts', async () => {
+        before('adding 3 transactions', async () => {
+            const updateOneArgEncoded = MockDownstream.interface.encodeFunctionData('updateOneArg', [123])
+            await awaitTx(orchestrator.addTransaction(mockDownstream.address, updateOneArgEncoded))
 
-//     it('should have 3 transactions', async function () {
-//       (await orchestrator.transactionsSize.call()).should.be.bignumber.eq(3);
-//     });
-//   });
+            const revertsEncoded = MockDownstream.interface.encodeFunctionData('reverts', [])
+            await awaitTx(orchestrator.addTransaction(mockDownstream.address, revertsEncoded))
 
-//   describe('Access Control', function () {
-//     describe('addTransaction', async function () {
-//       it('should be callable by owner', async function () {
-//         const updateNoArgEncoded = mockDownstream.contract.updateNoArg.getData();
-//         expect(
-//           await chain.isEthException(
-//             orchestrator.addTransaction(mockDownstream.address, updateNoArgEncoded, {from: deployer})
-//           )
-//         ).to.be.false;
-//       });
+            const updateTwoArgsEncoded = MockDownstream.interface.encodeFunctionData('updateTwoArgs', [12345, 23456])
+            await awaitTx(orchestrator.addTransaction(mockDownstream.address, updateTwoArgsEncoded))
+            await expectRevert.unspecified(orchestrator.rebase())
+        })
 
-//       it('should be not be callable by others', async function () {
-//         const updateNoArgEncoded = mockDownstream.contract.updateNoArg.getData();
-//         expect(
-//           await chain.isEthException(
-//             orchestrator.addTransaction(mockDownstream.address, updateNoArgEncoded, {from: user})
-//           )
-//         ).to.be.true;
-//       });
-//     });
+        it('should have 3 transactions', async () => {
+            (await orchestrator.transactionsSize()).should.equal(3)
+        })
+    })
 
-//     describe('setTransactionEnabled', async function () {
-//       it('should be callable by owner', async function () {
-//         (await orchestrator.transactionsSize.call()).should.be.bignumber.gt(0);
-//         expect(
-//           await chain.isEthException(
-//             orchestrator.setTransactionEnabled(0, true, {from: deployer})
-//           )
-//         ).to.be.false;
-//       });
+    describe('Access Control', () => {
+        describe('addTransaction', async () => {
+            it('should be callable by owner', async () => {
+                const updateNoArgEncoded = MockDownstream.interface.encodeFunctionData('updateNoArg', [])
+                expect(
+                    await isEthException(
+                        orchestrator.addTransaction(mockDownstream.address, updateNoArgEncoded)
+                    )
+                ).to.be.false
+            })
 
-//       it('should be not be callable by others', async function () {
-//         (await orchestrator.transactionsSize.call()).should.be.bignumber.gt(0);
-//         expect(
-//           await chain.isEthException(
-//             orchestrator.setTransactionEnabled(0, true, {from: user})
-//           )
-//         ).to.be.true;
-//       });
-//     });
+            it('should be not be callable by others', async () => {
+                const updateNoArgEncoded = MockDownstream.interface.encodeFunctionData('updateNoArg', [])
+                expect(
+                    await isEthException(
+                        orchestrator.connect(user).addTransaction(mockDownstream.address, updateNoArgEncoded)
+                    )
+                ).to.be.true
+            })
+        })
 
-//     describe('removeTransaction', async function () {
-//       it('should be not be callable by others', async function () {
-//         (await orchestrator.transactionsSize.call()).should.be.bignumber.gt(0);
-//         expect(
-//           await chain.isEthException(
-//             orchestrator.removeTransaction(0, {from: user})
-//           )
-//         ).to.be.true;
-//       });
+        describe('setTransactionEnabled', async () => {
+            it('should be callable by owner', async () => {
+                ((await orchestrator.transactionsSize()) > 0).should.be.true
+                expect(
+                    await isEthException(
+                        orchestrator.setTransactionEnabled(0, true)
+                    )
+                ).to.be.false
+            })
 
-//       it('should be callable by owner', async function () {
-//         (await orchestrator.transactionsSize.call()).should.be.bignumber.gt(0);
-//         expect(
-//           await chain.isEthException(
-//             orchestrator.removeTransaction(0, {from: deployer})
-//           )
-//         ).to.be.false;
-//       });
-//     });
+            it('should be not be callable by others', async () => {
+                ((await orchestrator.transactionsSize()) > 0).should.be.true
+                expect(
+                    await isEthException(
+                        orchestrator.connect(user).setTransactionEnabled(0, true)
+                    )
+                ).to.be.true
+            })
+        })
 
-//     describe('transferOwnership', async function () {
-//       it('should transfer ownership', async function () {
-//         (await orchestrator.owner.call()).should.eq(deployer);
-//         await orchestrator.transferOwnership(user);
-//         (await orchestrator.owner.call()).should.eq(user);
-//       });
-//     });
-//   });
-// });
+        describe('removeTransaction', async () => {
+            it('should be not be callable by others', async () => {
+                ((await orchestrator.transactionsSize()) > 0).should.be.true
+                expect(
+                    await isEthException(
+                        orchestrator.connect(user).removeTransaction(0)
+                    )
+                ).to.be.true
+            })
+
+            it('should be callable by owner', async () => {
+                ((await orchestrator.transactionsSize()) > 0).should.be.true
+                expect(
+                    await isEthException(
+                        orchestrator.removeTransaction(0)
+                    )
+                ).to.be.false
+            })
+        })
+
+        describe('transferOwnership', async () => {
+            it('should transfer ownership', async () => {
+                (await orchestrator.owner()).should.equal(deployerAddr)
+                await awaitTx(orchestrator.transferOwnership(userAddr))
+                ;(await orchestrator.owner()).should.equal(userAddr)
+            })
+        })
+    })
+})

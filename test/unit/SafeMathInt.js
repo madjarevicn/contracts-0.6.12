@@ -1,196 +1,188 @@
-// const SafeMathIntMock = artifacts.require('SafeMathIntMock');
+const { ethers, web3, upgrades, expect, BigNumber, isEthException, awaitTx, waitForSomeTime, currentTime, toBASEDenomination } = require('../setup')
 
-// const BigNumber = web3.BigNumber;
-// const _require = require('app-root-path').require;
-// const BlockchainCaller = _require('/util/blockchain_caller');
-// const chain = new BlockchainCaller(web3);
+describe('SafeMathInt', () => {
+    const MIN_INT256 = BigNumber.from(-2).pow(255)
+    const MAX_INT256 = BigNumber.from(2).pow(255).sub(1)
 
-// require('chai')
-//   .use(require('chai-bignumber')(BigNumber))
-//   .should();
+    let safeMathInt
 
-// contract('SafeMathInt', () => {
-//   const MIN_INT256 = new BigNumber(-2).pow(255);
-//   const MAX_INT256 = new BigNumber(2).pow(255).minus(1);
+    beforeEach(async () => {
+        const SafeMathIntMock = await ethers.getContractFactory('SafeMathIntMock')
+        safeMathInt = await SafeMathIntMock.deploy()
+    })
 
-//   let safeMathInt;
+    async function returnVal (tx) {
+        return (await awaitTx(tx)).events[0].args.val
+    }
 
-//   beforeEach(async function () {
-//     safeMathInt = await SafeMathIntMock.new();
-//   });
+    describe('add', () => {
+        it('adds correctly', async () => {
+            const a = BigNumber.from(5678)
+            const b = BigNumber.from(1234)
 
-//   async function returnVal (tx) {
-//     return (await tx).logs[0].args.val;
-//   }
+            ;(await returnVal(safeMathInt.add(a, b))).should.equal(a.add(b))
+        })
 
-//   describe('add', function () {
-//     it('adds correctly', async function () {
-//       const a = new BigNumber(5678);
-//       const b = new BigNumber(1234);
+        it('should fail on addition overflow', async () => {
+            const a = MAX_INT256
+            const b = BigNumber.from(1)
 
-//       (await returnVal(safeMathInt.add(a, b))).should.be.bignumber.eq(a.plus(b));
-//     });
+            expect(
+                await isEthException(safeMathInt.add(a, b))
+            ).to.be.true
+            expect(
+                await isEthException(safeMathInt.add(b, a))
+            ).to.be.true
+        })
 
-//     it('should fail on addition overflow', async function () {
-//       const a = MAX_INT256;
-//       const b = new BigNumber(1);
+        it('should fail on addition overflow, swapped args', async () => {
+            const a = BigNumber.from(1)
+            const b = MAX_INT256
 
-//       expect(
-//         await chain.isEthException(safeMathInt.add(a, b))
-//       ).to.be.true;
-//       expect(
-//         await chain.isEthException(safeMathInt.add(b, a))
-//       ).to.be.true;
-//     });
+            expect(
+                await isEthException(safeMathInt.add(a, b))
+            ).to.be.true
+            expect(
+                await isEthException(safeMathInt.add(b, a))
+            ).to.be.true
+        })
 
-//     it('should fail on addition overflow, swapped args', async function () {
-//       const a = new BigNumber(1);
-//       const b = MAX_INT256;
+        it('should fail on addition negative overflow', async () => {
+            const a = MIN_INT256
+            const b = BigNumber.from(-1)
 
-//       expect(
-//         await chain.isEthException(safeMathInt.add(a, b))
-//       ).to.be.true;
-//       expect(
-//         await chain.isEthException(safeMathInt.add(b, a))
-//       ).to.be.true;
-//     });
+            expect(
+                await isEthException(safeMathInt.add(a, b))
+            ).to.be.true
+            expect(
+                await isEthException(safeMathInt.add(b, a))
+            ).to.be.true
+        })
+    })
 
-//     it('should fail on addition negative overflow', async function () {
-//       const a = MIN_INT256;
-//       const b = new BigNumber(-1);
+    describe('sub', () => {
+        it('subtracts correctly', async () => {
+            const a = BigNumber.from(5678)
+            const b = BigNumber.from(1234)
 
-//       expect(
-//         await chain.isEthException(safeMathInt.add(a, b))
-//       ).to.be.true;
-//       expect(
-//         await chain.isEthException(safeMathInt.add(b, a))
-//       ).to.be.true;
-//     });
-//   });
+            ;(await returnVal(safeMathInt.sub(a, b))).should.equal(a.sub(b))
+        })
 
-//   describe('sub', function () {
-//     it('subtracts correctly', async function () {
-//       const a = new BigNumber(5678);
-//       const b = new BigNumber(1234);
+        it('should fail on subtraction overflow', async () => {
+            const a = MAX_INT256
+            const b = BigNumber.from(-1)
 
-//       (await returnVal(safeMathInt.sub(a, b))).should.be.bignumber.eq(a.minus(b));
-//     });
+            expect(
+                await isEthException(safeMathInt.sub(a, b))
+            ).to.be.true
+        })
 
-//     it('should fail on subtraction overflow', async function () {
-//       const a = MAX_INT256;
-//       const b = new BigNumber(-1);
+        it('should fail on subtraction negative overflow', async () => {
+            const a = MIN_INT256
+            const b = BigNumber.from(1)
 
-//       expect(
-//         await chain.isEthException(safeMathInt.sub(a, b))
-//       ).to.be.true;
-//     });
+            expect(
+                await isEthException(safeMathInt.sub(a, b))
+            ).to.be.true
+        })
+    })
 
-//     it('should fail on subtraction negative overflow', async function () {
-//       const a = MIN_INT256;
-//       const b = new BigNumber(1);
+    describe('mul', () => {
+        it('multiplies correctly', async () => {
+            const a = BigNumber.from(1234)
+            const b = BigNumber.from(5678)
 
-//       expect(
-//         await chain.isEthException(safeMathInt.sub(a, b))
-//       ).to.be.true;
-//     });
-//   });
+            ;(await returnVal(safeMathInt.mul(a, b))).should.equal(a.mul(b))
+        })
 
-//   describe('mul', function () {
-//     it('multiplies correctly', async function () {
-//       const a = new BigNumber(1234);
-//       const b = new BigNumber(5678);
+        it('handles a zero product correctly', async () => {
+            const a = BigNumber.from(0)
+            const b = BigNumber.from(5678)
 
-//       (await returnVal(safeMathInt.mul(a, b))).should.be.bignumber.eq(a.times(b));
-//     });
+            ;(await returnVal(safeMathInt.mul(a, b))).should.equal(a.mul(b))
+        })
 
-//     it('handles a zero product correctly', async function () {
-//       const a = new BigNumber(0);
-//       const b = new BigNumber(5678);
+        it('should fail on multiplication overflow', async () => {
+            const a = MAX_INT256
+            const b = BigNumber.from(2)
 
-//       (await returnVal(safeMathInt.mul(a, b))).should.be.bignumber.eq(a.times(b));
-//     });
+            expect(
+                await isEthException(safeMathInt.mul(a, b))
+            ).to.be.true
+            expect(
+                await isEthException(safeMathInt.mul(b, a))
+            ).to.be.true
+        })
 
-//     it('should fail on multiplication overflow', async function () {
-//       const a = MAX_INT256;
-//       const b = new BigNumber(2);
+        it('should fail on multiplication negative overflow', async () => {
+            const a = MIN_INT256
+            const b = BigNumber.from(2)
 
-//       expect(
-//         await chain.isEthException(safeMathInt.mul(a, b))
-//       ).to.be.true;
-//       expect(
-//         await chain.isEthException(safeMathInt.mul(b, a))
-//       ).to.be.true;
-//     });
+            expect(
+                await isEthException(safeMathInt.mul(a, b))
+            ).to.be.true
+            expect(
+                await isEthException(safeMathInt.mul(b, a))
+            ).to.be.true
+        })
 
-//     it('should fail on multiplication negative overflow', async function () {
-//       const a = MIN_INT256;
-//       const b = new BigNumber(2);
+        it('should fail on multiplication between -1 and MIN_INT256', async () => {
+            const a = MIN_INT256
+            const b = BigNumber.from(-1)
 
-//       expect(
-//         await chain.isEthException(safeMathInt.mul(a, b))
-//       ).to.be.true;
-//       expect(
-//         await chain.isEthException(safeMathInt.mul(b, a))
-//       ).to.be.true;
-//     });
+            expect(
+                await isEthException(safeMathInt.mul(a, b))
+            ).to.be.true
+            expect(
+                await isEthException(safeMathInt.mul(b, a))
+            ).to.be.true
+        })
+    })
 
-//     it('should fail on multiplication between -1 and MIN_INT256', async function () {
-//       const a = MIN_INT256;
-//       const b = new BigNumber(-1);
+    describe('div', () => {
+        it('divides correctly', async () => {
+            const a = BigNumber.from(5678)
+            const b = BigNumber.from(5678)
 
-//       expect(
-//         await chain.isEthException(safeMathInt.mul(a, b))
-//       ).to.be.true;
-//       expect(
-//         await chain.isEthException(safeMathInt.mul(b, a))
-//       ).to.be.true;
-//     });
-//   });
+            ;(await returnVal(safeMathInt.div(a, b))).should.equal(a.div(b))
+        })
 
-//   describe('div', function () {
-//     it('divides correctly', async function () {
-//       const a = new BigNumber(5678);
-//       const b = new BigNumber(5678);
+        it('should fail on zero division', async () => {
+            const a = BigNumber.from(5678)
+            const b = BigNumber.from(0)
 
-//       (await returnVal(safeMathInt.div(a, b))).should.be.bignumber.eq(a.div(b));
-//     });
+            expect(
+                await isEthException(safeMathInt.div(a, b))
+            ).to.be.true
+        })
 
-//     it('should fail on zero division', async function () {
-//       const a = new BigNumber(5678);
-//       const b = new BigNumber(0);
+        it('should fail when MIN_INT256 is divided by -1', async () => {
+            const a = BigNumber.from(MIN_INT256)
+            const b = BigNumber.from(-1)
 
-//       expect(
-//         await chain.isEthException(safeMathInt.div(a, b))
-//       ).to.be.true;
-//     });
+            expect(
+                await isEthException(safeMathInt.div(a, b))
+            ).to.be.true
+        })
+    })
 
-//     it('should fail when MIN_INT256 is divided by -1', async function () {
-//       const a = new BigNumber(MIN_INT256);
-//       const b = new BigNumber(-1);
+    describe('abs', () => {
+        it('works for 0', async () => {
+            (await returnVal(safeMathInt.abs(0))).should.equal(0)
+        })
 
-//       expect(
-//         await chain.isEthException(safeMathInt.div(a, b))
-//       ).to.be.true;
-//     });
-//   });
+        it('works on positive numbers', async () => {
+            (await returnVal(safeMathInt.abs(100))).should.equal(100)
+        })
 
-//   describe('abs', function () {
-//     it('works for 0', async function () {
-//       (await returnVal(safeMathInt.abs(0))).should.be.bignumber.eq(0);
-//     });
+        it('works on negative numbers', async () => {
+            (await returnVal(safeMathInt.abs(-100))).should.equal(100)
+        })
 
-//     it('works on positive numbers', async function () {
-//       (await returnVal(safeMathInt.abs(100))).should.be.bignumber.eq(100);
-//     });
-
-//     it('works on negative numbers', async function () {
-//       (await returnVal(safeMathInt.abs(-100))).should.be.bignumber.eq(100);
-//     });
-
-//     it('fails on overflow condition', async function () {
-//       expect(
-//         await chain.isEthException(safeMathInt.abs(MIN_INT256))
-//       ).to.be.true;
-//     });
-//   });
-// });
+        it('fails on overflow condition', async () => {
+            expect(
+                await isEthException(safeMathInt.abs(MIN_INT256))
+            ).to.be.true
+        })
+    })
+})

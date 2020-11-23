@@ -13,6 +13,7 @@ contract Cascade is OwnableUpgradeSafe {
         uint256 lpTokensDeposited;
         uint256 depositTimestamp;
         uint8   multiplierLevel;
+        uint256 mostRecentWithdrawal;
     }
 
     mapping(address => Deposit) internal deposits;
@@ -25,6 +26,7 @@ contract Cascade is OwnableUpgradeSafe {
     uint256 public lastAccountingUpdateTimestamp;
     IERC20 public lpToken;
     BaseToken public BASE;
+    uint256 public minTimeBetweenWithdrawals;
 
     function initialize()
         public
@@ -45,6 +47,13 @@ contract Cascade is OwnableUpgradeSafe {
         onlyOwner
     {
         BASE = BaseToken(_baseToken);
+    }
+
+    function setMinTimeBetweenWithdrawals(uint256 _minTimeBetweenWithdrawals)
+        public
+        onlyOwner
+    {
+        minTimeBetweenWithdrawals = _minTimeBetweenWithdrawals;
     }
 
     function deposit(uint256 amount)
@@ -150,6 +159,7 @@ contract Cascade is OwnableUpgradeSafe {
         updateAccounting();
 
         Deposit storage deposit = deposits[msg.sender];
+        require(now > deposit.mostRecentWithdrawal + minTimeBetweenWithdrawals, "too soon");
         require(deposit.multiplierLevel > 0, "doesn't exist");
         require(BASE.balanceOf(address(this)) >= amount, "available tokens");
 

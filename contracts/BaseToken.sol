@@ -61,7 +61,7 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
 
     // TOTAL_SHARES is a multiple of INITIAL_SHARES_SUPPLY so that _sharesPerBASE is an integer.
     // Use the highest value that fits in a uint256 for max granularity.
-    uint256 private constant TOTAL_SHARES = MAX_UINT256 - (MAX_UINT256 % INITIAL_SHARES_SUPPLY);
+    uint256 private TOTAL_SHARES = INITIAL_SHARES_SUPPLY; // MAX_UINT256 - (MAX_UINT256 % INITIAL_SHARES_SUPPLY);
 
     // MAX_SUPPLY = maximum integer < (sqrt(4*TOTAL_SHARES + 1) - 1) / 2
     uint256 private constant MAX_SUPPLY = ~uint128(0);  // (2^128) - 1
@@ -76,6 +76,19 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
     // it's fully paid.
     mapping (address => mapping (address => uint256)) private _allowedBASE;
 
+    address public devPoolAddress;
+
+    struct Charity {
+        bool exists;
+        uint256 index;
+        uint8 percentOnExpansion;
+        uint8 percentOnContraction;
+    }
+
+    address[] public charityRecipients;
+    mapping(address => Charity) public charity;
+    Charity totalCharity;
+
     /**
      * @param monetaryPolicy_ The address of the monetary policy contract to use for authentication.
      */
@@ -85,6 +98,35 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
     {
         monetaryPolicy = monetaryPolicy_;
         emit LogMonetaryPolicyUpdated(monetaryPolicy_);
+    }
+
+    function addCharityRecipient(address addr, uint8 percentOnExpansion, uint8 percentOnContraction)
+        external
+        onlyOwner
+    {
+        require(totalCharity.percentOnExpansion + percentOnExpansion <= 100, "expansion");
+        require(totalCharity.percentOnContraction + percentOnContraction <= 100, "contraction");
+        require(charity[addr].exists == false, "already exists");
+
+        totalCharity.percentOnExpansion += percentOnExpansion;
+        totalCharity.percentOnContraction += percentOnContraction;
+        charity[addr] = Charity({
+            exists: true,
+            index: charityRecipients.length,
+            percentOnExpansion: percentOnExpansion,
+            percentOnContraction: percentOnContraction
+        });
+        charityRecipients.push(addr);
+    }
+
+    function removeCharityRecipient(address addr)
+        external
+        onlyOwner
+    {
+        require(charity[addr].exists, "404");
+        charityRecipients[charity[addr].index] = charityRecipients[charityRecipients.length - 1];
+        charityRecipients.pop();
+        delete charity[addr];
     }
 
     /**
@@ -105,9 +147,27 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
 
         if (supplyDelta < 0) {
             _totalSupply = _totalSupply.sub(uint256(supplyDelta.abs()));
+
+            uint256 charityAmount = (uint256(supplyDelta.abs()) * uint256(totalCharity.percentOnContraction)) / 100;
+            uint256 totalSharesDelta = (charityAmount * TOTAL_SHARES) / ((_totalSupply - uint256(supplyDelta.abs())) - charityAmount);
+            TOTAL_SHARES += totalSharesDelta;
+            for (uint256 i = 0; i < charityRecipients.length; i++) {
+                address recpt = charityRecipients[i];
+                _shareBalances[recpt] += totalSharesDelta / (charity[recpt].percentOnContraction / totalCharity.percentOnContraction);
+            }
+
         } else {
             _totalSupply = _totalSupply.add(uint256(supplyDelta));
+
+            uint256 charityAmount = (uint256(supplyDelta) * uint256(totalCharity.percentOnExpansion)) / 100;
+            uint256 totalSharesDelta = (charityAmount * TOTAL_SHARES) / ((_totalSupply + uint256(supplyDelta.abs())) - charityAmount);
+            TOTAL_SHARES += totalSharesDelta;
+            for (uint256 i = 0; i < charityRecipients.length; i++) {
+                address recpt = charityRecipients[i];
+                _shareBalances[recpt] += totalSharesDelta / (charity[recpt].percentOnExpansion / totalCharity.percentOnExpansion);
+            }
         }
+
 
         if (_totalSupply > MAX_SUPPLY) {
             _totalSupply = MAX_SUPPLY;
@@ -124,7 +184,6 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
         // In the case of _totalSupply <= MAX_UINT128 (our current supply cap), this
         // deviation is guaranteed to be < 1, so we can omit this step. If the supply cap is
         // ever increased, it must be re-included.
-        // _totalSupply = TOTAL_SHARES.div(_sharesPerBASE)
 
         emit LogRebase(epoch, _totalSupply);
         return _totalSupply;

@@ -1,7 +1,6 @@
 const bre = require('@nomiclabs/buidler')
 const { ethers } = bre
 const BigNumber = ethers.BigNumber
-const fs = require('fs')
 
 async function isEthException(promise) {
     let msg = 'No Exception'

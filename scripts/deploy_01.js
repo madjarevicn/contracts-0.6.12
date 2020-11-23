@@ -10,7 +10,7 @@ async function main() {
     console.log('BaseToken deployed to:', baseToken.address)
 
     const BaseTokenMonetaryPolicy = await ethers.getContractFactory('BaseTokenMonetaryPolicy')
-    const baseTokenMonetaryPolicy = await upgrades.deployProxy(BaseTokenMonetaryPolicy, [baseToken.address, '300000000'])
+    const baseTokenMonetaryPolicy = await upgrades.deployProxy(BaseTokenMonetaryPolicy, [baseToken.address, '483703019126'])
     await baseTokenMonetaryPolicy.deployed()
     console.log('BaseTokenMonetaryPolicy deployed to:', baseTokenMonetaryPolicy.address)
 
@@ -18,6 +18,10 @@ async function main() {
     const baseTokenOrchestrator = await upgrades.deployProxy(BaseTokenOrchestrator, [baseTokenMonetaryPolicy.address])
     await baseTokenOrchestrator.deployed()
     console.log('BaseTokenOrchestrator deployed to:', baseTokenOrchestrator.address)
+
+    await (await baseToken.setMonetaryPolicy(baseTokenMonetaryPolicy.address)).wait()
+    await (await baseTokenMonetaryPolicy.setOrchestrator(baseTokenOrchestrator.address)).wait()
+    await (await baseTokenMonetaryPolicy.setMcapOracle('0xEC8761a0A73c34329CA5B1D3Dc7eD07F30e836e2')).wait()
 }
 
 

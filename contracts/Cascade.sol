@@ -70,13 +70,13 @@ contract Cascade is OwnableUpgradeSafe {
         Deposit storage deposit = deposits[msg.sender];
 
         if (deposit.multiplierLevel == 2) {
-            totalDepositedLevel2 -= deposit.lpTokensDeposited;
+            totalDepositedLevel2 = totalDepositedLevel2.sub(deposit.lpTokensDeposited);
         } else if (deposit.multiplierLevel == 3) {
-            totalDepositedLevel3 -= deposit.lpTokensDeposited;
+            totalDepositedLevel3 = totalDepositedLevel3.sub(deposit.lpTokensDeposited);
         }
-        totalDepositedLevel1 += amount;
+        totalDepositedLevel1 = totalDepositedLevel1.add(amount);
 
-        deposit.lpTokensDeposited += amount;
+        deposit.lpTokensDeposited = deposit.lpTokensDeposited.add(amount);
         deposit.depositTimestamp = now;
         deposit.multiplierLevel = 1;
     }
@@ -92,10 +92,10 @@ contract Cascade is OwnableUpgradeSafe {
     function updateAccounting()
         public
     {
-        uint256 delta = now - lastAccountingUpdateTimestamp;
-        totalDepositSecondsLevel1 += totalDepositedLevel1 * delta;
-        totalDepositSecondsLevel2 += totalDepositedLevel2 * delta;
-        totalDepositSecondsLevel3 += totalDepositedLevel3 * delta;
+        uint256 delta = now.sub(lastAccountingUpdateTimestamp);
+        totalDepositSecondsLevel1 = totalDepositSecondsLevel1.add(totalDepositedLevel1.mul(delta));
+        totalDepositSecondsLevel2 = totalDepositSecondsLevel2.add(totalDepositedLevel2.mul(delta));
+        totalDepositSecondsLevel3 = totalDepositSecondsLevel3.add(totalDepositedLevel3.mul(delta));
 
         lastAccountingUpdateTimestamp = now;
     }
@@ -109,22 +109,22 @@ contract Cascade is OwnableUpgradeSafe {
         require(deposit.multiplierLevel > 0, "no deposit");
         require(deposit.multiplierLevel < 3, "fully upgraded");
 
-        uint256 duration = now - deposit.depositTimestamp;
+        uint256 duration = now.sub(deposit.depositTimestamp);
 
         if (deposit.multiplierLevel == 1 && duration >= 60 days) {
             deposit.multiplierLevel = 3;
-            totalDepositedLevel1 -= deposit.lpTokensDeposited;
-            totalDepositedLevel3 += deposit.lpTokensDeposited;
+            totalDepositedLevel1 = totalDepositedLevel1.sub(deposit.lpTokensDeposited);
+            totalDepositedLevel3 = totalDepositedLevel3.add(deposit.lpTokensDeposited);
 
         } else if (deposit.multiplierLevel == 1 && duration >= 30 days) {
             deposit.multiplierLevel = 2;
-            totalDepositedLevel1 -= deposit.lpTokensDeposited;
-            totalDepositedLevel2 += deposit.lpTokensDeposited;
+            totalDepositedLevel1 = totalDepositedLevel1.sub(deposit.lpTokensDeposited);
+            totalDepositedLevel2 = totalDepositedLevel2.add(deposit.lpTokensDeposited);
 
         } else if (deposit.multiplierLevel == 2 && duration >= 60 days) {
             deposit.multiplierLevel = 3;
-            totalDepositedLevel2 -= deposit.lpTokensDeposited;
-            totalDepositedLevel3 += deposit.lpTokensDeposited;
+            totalDepositedLevel2 = totalDepositedLevel2.sub(deposit.lpTokensDeposited);
+            totalDepositedLevel3 = totalDepositedLevel3.add(deposit.lpTokensDeposited);
 
         } else {
             revert("ineligible");
@@ -140,17 +140,17 @@ contract Cascade is OwnableUpgradeSafe {
 
         uint256 userDepositSeconds =
             deposit.lpTokensDeposited
-            * (now - deposit.depositTimestamp)
-            * deposit.multiplierLevel;
+              .mul(now.sub(deposit.depositTimestamp))
+              .mul(deposit.multiplierLevel);
 
         uint256 totalDepositSeconds =
             totalDepositSecondsLevel1
-            + (totalDepositSecondsLevel2 * 2)
-            + (totalDepositSecondsLevel3 * 3);
+              .add(totalDepositSecondsLevel2.mul(2))
+              .add(totalDepositSecondsLevel3.mul(3));
 
         uint256 rewardsPool = BASE.balanceOf(address(this));
 
-        return (rewardsPool * userDepositSeconds) / totalDepositSeconds;
+        return (rewardsPool.mul(userDepositSeconds)).div(totalDepositSeconds);
     }
 
     function claimBASE(uint256 amount)
@@ -159,8 +159,8 @@ contract Cascade is OwnableUpgradeSafe {
         updateAccounting();
 
         Deposit storage deposit = deposits[msg.sender];
-        require(now > deposit.mostRecentWithdrawal + minTimeBetweenWithdrawals, "too soon");
         require(deposit.multiplierLevel > 0, "doesn't exist");
+        require(now > deposit.mostRecentWithdrawal.add(minTimeBetweenWithdrawals), "too soon");
         require(BASE.balanceOf(address(this)) >= amount, "available tokens");
 
         uint256 owed = owedTo(msg.sender);
@@ -181,14 +181,14 @@ contract Cascade is OwnableUpgradeSafe {
         require(ok, "transfer");
 
         if (deposit.multiplierLevel == 1) {
-            totalDepositedLevel1 -= amount;
+            totalDepositedLevel1 = totalDepositedLevel1.sub(amount);
         } else if (deposit.multiplierLevel == 2) {
-            totalDepositedLevel2 -= amount;
+            totalDepositedLevel2 = totalDepositedLevel2.sub(amount);
         } else if (deposit.multiplierLevel == 3) {
-            totalDepositedLevel3 -= amount;
+            totalDepositedLevel3 = totalDepositedLevel3.sub(amount);
         }
 
-        deposit.lpTokensDeposited -= amount;
+        deposit.lpTokensDeposited = deposit.lpTokensDeposited.sub(amount);
         if (deposit.lpTokensDeposited == 0) {
             delete deposits[msg.sender];
         }

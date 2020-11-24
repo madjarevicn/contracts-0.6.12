@@ -129,9 +129,86 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
             supplyDelta = (MAX_SUPPLY.sub(BASE.totalSupply())).toInt256Safe();
         }
 
+        applyCharity(supplyDelta);
         uint256 supplyAfterRebase = BASE.rebase(epoch, supplyDelta);
         assert(supplyAfterRebase <= MAX_SUPPLY);
         emit LogRebase(epoch, tokenPrice, mcap, supplyDelta, now);
+    }
+
+    struct Charity {
+        bool exists;
+        uint256 index;
+        uint8 percentOnExpansion;
+        uint8 percentOnContraction;
+    }
+
+    address[] public charityRecipients;
+    mapping(address => Charity) public charity;
+    Charity public totalCharity;
+
+    function applyCharity(int256 supplyDelta)
+        private
+    {
+        uint256 totalCharityPercent = uint256(supplyDelta < 0 ? totalCharity.percentOnContraction
+                                                              : totalCharity.percentOnExpansion);
+
+        uint256 totalCharitySupply = uint256(supplyDelta.abs()).mul(totalCharityPercent).div(100);
+        uint256 supplyAfterRebase = (supplyDelta < 0) ? BASE.totalSupply().sub(uint256(supplyDelta.abs()))
+                                                      : BASE.totalSupply().add(uint256(supplyDelta));
+
+        uint256 totalSharesDelta =    totalCharitySupply.mul(BASE.totalShares())
+                            .div(//------------------------------------------
+                                    supplyAfterRebase.sub(totalCharitySupply)
+                             );
+
+        for (uint256 i = 0; i < charityRecipients.length; i++) {
+            address recipient = charityRecipients[i];
+            uint256 recipientPercent = supplyDelta < 0 ? charity[recipient].percentOnContraction
+                                                       : charity[recipient].percentOnExpansion;
+
+            //
+            // Determine the recipient's increase in shares:
+            //     Recipient's % share of charity = recipient % / total %
+            //     Increase in shares             = totalSharesDelta / recipient's % share of charity
+            //
+            // However, in order to preserve precision, we invert the calculation to:
+            //     Increase in shares             = totalSharesDelta * total % / recipient %
+            //
+            uint256 recipientSharesDelta = totalSharesDelta.mul(totalCharityPercent).div(recipientPercent);
+            BASE.mintShares(recipient, recipientSharesDelta);
+        }
+    }
+
+    function addCharityRecipient(address addr, uint8 percentOnExpansion, uint8 percentOnContraction)
+        external
+        onlyOwner
+    {
+        require(uint256(totalCharity.percentOnExpansion).add(percentOnExpansion) <= 100, "expansion");
+        require(uint256(totalCharity.percentOnContraction).add(percentOnContraction) <= 100, "contraction");
+        require(charity[addr].exists == false, "already exists");
+
+        totalCharity.percentOnExpansion += percentOnExpansion;
+        totalCharity.percentOnContraction += percentOnContraction;
+        charity[addr] = Charity({
+            exists: true,
+            index: charityRecipients.length,
+            percentOnExpansion: percentOnExpansion,
+            percentOnContraction: percentOnContraction
+        });
+        charityRecipients.push(addr);
+    }
+
+    function removeCharityRecipient(address addr)
+        external
+        onlyOwner
+    {
+        require(charity[addr].exists, "doesn't exist");
+        require(charityRecipients.length > 0, "spacetime has shattered");
+        require(charityRecipients.length - 1 >= charity[addr].index, "too much cosmic radiation");
+
+        charityRecipients[charity[addr].index] = charityRecipients[charityRecipients.length - 1];
+        charityRecipients.pop();
+        delete charity[addr];
     }
 
     /**

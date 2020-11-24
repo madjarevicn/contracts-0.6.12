@@ -23,7 +23,7 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
     // Anytime there is division, there is a risk of numerical instability from rounding errors. In
     // order to minimize this risk, we adhere to the following guidelines:
     // 1) The conversion rate adopted is the number of shares that equals 1 BASE.
-    //    The inverse rate must not be used--TOTAL_SHARES is always the numerator and _totalSupply is
+    //    The inverse rate must not be used--totalShares is always the numerator and _totalSupply is
     //    always the denominator. (i.e. If you want to convert shares to BASE instead of
     //    multiplying by the inverse rate, you should divide by the normal rate)
     // 2) Share balances converted into BaseToken are always rounded down (truncated).
@@ -59,11 +59,9 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
     uint256 private constant MAX_UINT256 = ~uint256(0);
     uint256 private constant INITIAL_SHARES_SUPPLY = 50 * 10**6 * 10**DECIMALS;
 
-    // TOTAL_SHARES is a multiple of INITIAL_SHARES_SUPPLY so that _sharesPerBASE is an integer.
-    // Use the highest value that fits in a uint256 for max granularity.
-    uint256 private TOTAL_SHARES = INITIAL_SHARES_SUPPLY; // MAX_UINT256 - (MAX_UINT256 % INITIAL_SHARES_SUPPLY);
+    uint256 private _totalShares = INITIAL_SHARES_SUPPLY;
 
-    // MAX_SUPPLY = maximum integer < (sqrt(4*TOTAL_SHARES + 1) - 1) / 2
+    // MAX_SUPPLY = maximum integer < (sqrt(4*totalShares + 1) - 1) / 2
     uint256 private constant MAX_SUPPLY = ~uint128(0);  // (2^128) - 1
 
     uint256 private _totalSupply;
@@ -76,19 +74,6 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
     // it's fully paid.
     mapping (address => mapping (address => uint256)) private _allowedBASE;
 
-    address public devPoolAddress;
-
-    struct Charity {
-        bool exists;
-        uint256 index;
-        uint8 percentOnExpansion;
-        uint8 percentOnContraction;
-    }
-
-    address[] public charityRecipients;
-    mapping(address => Charity) public charity;
-    Charity totalCharity;
-
     /**
      * @param monetaryPolicy_ The address of the monetary policy contract to use for authentication.
      */
@@ -98,35 +83,6 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
     {
         monetaryPolicy = monetaryPolicy_;
         emit LogMonetaryPolicyUpdated(monetaryPolicy_);
-    }
-
-    function addCharityRecipient(address addr, uint8 percentOnExpansion, uint8 percentOnContraction)
-        external
-        onlyOwner
-    {
-        require(totalCharity.percentOnExpansion + percentOnExpansion <= 100, "expansion");
-        require(totalCharity.percentOnContraction + percentOnContraction <= 100, "contraction");
-        require(charity[addr].exists == false, "already exists");
-
-        totalCharity.percentOnExpansion += percentOnExpansion;
-        totalCharity.percentOnContraction += percentOnContraction;
-        charity[addr] = Charity({
-            exists: true,
-            index: charityRecipients.length,
-            percentOnExpansion: percentOnExpansion,
-            percentOnContraction: percentOnContraction
-        });
-        charityRecipients.push(addr);
-    }
-
-    function removeCharityRecipient(address addr)
-        external
-        onlyOwner
-    {
-        require(charity[addr].exists, "404");
-        charityRecipients[charity[addr].index] = charityRecipients[charityRecipients.length - 1];
-        charityRecipients.pop();
-        delete charity[addr];
     }
 
     /**
@@ -147,39 +103,21 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
 
         if (supplyDelta < 0) {
             _totalSupply = _totalSupply.sub(uint256(supplyDelta.abs()));
-
-            uint256 charityAmount = (uint256(supplyDelta.abs()) * uint256(totalCharity.percentOnContraction)) / 100;
-            uint256 totalSharesDelta = (charityAmount * TOTAL_SHARES) / ((_totalSupply - uint256(supplyDelta.abs())) - charityAmount);
-            TOTAL_SHARES += totalSharesDelta;
-            for (uint256 i = 0; i < charityRecipients.length; i++) {
-                address recpt = charityRecipients[i];
-                _shareBalances[recpt] += totalSharesDelta / (charity[recpt].percentOnContraction / totalCharity.percentOnContraction);
-            }
-
         } else {
             _totalSupply = _totalSupply.add(uint256(supplyDelta));
-
-            uint256 charityAmount = (uint256(supplyDelta) * uint256(totalCharity.percentOnExpansion)) / 100;
-            uint256 totalSharesDelta = (charityAmount * TOTAL_SHARES) / ((_totalSupply + uint256(supplyDelta.abs())) - charityAmount);
-            TOTAL_SHARES += totalSharesDelta;
-            for (uint256 i = 0; i < charityRecipients.length; i++) {
-                address recpt = charityRecipients[i];
-                _shareBalances[recpt] += totalSharesDelta / (charity[recpt].percentOnExpansion / totalCharity.percentOnExpansion);
-            }
         }
-
 
         if (_totalSupply > MAX_SUPPLY) {
             _totalSupply = MAX_SUPPLY;
         }
 
-        _sharesPerBASE = TOTAL_SHARES.div(_totalSupply);
+        _sharesPerBASE = _totalShares.div(_totalSupply);
 
         // From this point forward, _sharesPerBASE is taken as the source of truth.
         // We recalculate a new _totalSupply to be in agreement with the _sharesPerBASE
         // conversion rate.
         // This means our applied supplyDelta can deviate from the requested supplyDelta,
-        // but this deviation is guaranteed to be < (_totalSupply^2)/(TOTAL_SHARES - _totalSupply).
+        // but this deviation is guaranteed to be < (_totalSupply^2)/(totalShares - _totalSupply).
         //
         // In the case of _totalSupply <= MAX_UINT128 (our current supply cap), this
         // deviation is guaranteed to be < 1, so we can omit this step. If the supply cap is
@@ -187,6 +125,39 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
 
         emit LogRebase(epoch, _totalSupply);
         return _totalSupply;
+    }
+
+    function totalShares()
+        public
+        view
+        returns (uint256)
+    {
+        return _totalShares;
+    }
+
+    function sharesOf(address user)
+        public
+        view
+        returns (uint256)
+    {
+        return _shareBalances[user];
+    }
+
+    function mintShares(address recipient, uint256 amount)
+        public
+    {
+        require(msg.sender == monetaryPolicy, "forbidden");
+        _shareBalances[recipient] = _shareBalances[recipient].add(amount);
+        _totalShares = _totalShares.add(amount);
+    }
+
+    function burnShares(address recipient, uint256 amount)
+        public
+    {
+        require(msg.sender == monetaryPolicy, "forbidden");
+        require(_shareBalances[recipient] >= amount, "amount");
+        _shareBalances[recipient] = _shareBalances[recipient].sub(amount);
+        _totalShares = _totalShares.sub(amount);
     }
 
     function initialize()
@@ -201,8 +172,8 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
         tokenPausedDeprecated = false;
 
         _totalSupply = INITIAL_SHARES_SUPPLY;
-        _shareBalances[owner()] = TOTAL_SHARES;
-        _sharesPerBASE = TOTAL_SHARES.div(_totalSupply);
+        _shareBalances[owner()] = _totalShares;
+        _sharesPerBASE = _totalShares.div(_totalSupply);
 
         // Ban the Kucoin hacker
         bannedUsers[0xeB31973E0FeBF3e3D7058234a5eBbAe1aB4B8c23] = true;

@@ -9,14 +9,12 @@ contract Cascade is OwnableUpgradeSafe {
     using SafeMath for uint256;
     using SafeMathInt for int256;
 
-    struct Deposit {
-        uint256 lpTokensDeposited;
-        uint256 depositTimestamp;
-        uint8   multiplierLevel;
-        uint256 mostRecentBASEWithdrawal;
-    }
+    mapping(address => uint256) internal deposits_lpTokensDeposited;
+    mapping(address => uint256) internal deposits_depositTimestamp;
+    mapping(address => uint8)   internal deposits_multiplierLevel;
+    mapping(address => uint256) internal deposits_mostRecentBASEWithdrawal;
 
-    mapping(address => Deposit) internal deposits;
+
     uint256 public totalDepositedLevel1;
     uint256 public totalDepositedLevel2;
     uint256 public totalDepositedLevel3;
@@ -86,41 +84,38 @@ contract Cascade is OwnableUpgradeSafe {
         bool ok = lpToken.transferFrom(msg.sender, address(this), amount);
         require(ok, "transferFrom");
 
-        Deposit storage deposit = deposits[msg.sender];
-
-        if (deposit.multiplierLevel > 1) {
-            burnDepositSeconds(deposit);
+        if (deposits_multiplierLevel[msg.sender] > 1) {
+            burnDepositSeconds(msg.sender);
         }
 
         totalDepositedLevel1 = totalDepositedLevel1.add(amount);
 
-        deposit.lpTokensDeposited = deposit.lpTokensDeposited.add(amount);
-        deposit.depositTimestamp = now;
-        deposit.multiplierLevel = 1;
+        deposits_lpTokensDeposited[msg.sender] = deposits_lpTokensDeposited[msg.sender].add(amount);
+        deposits_depositTimestamp[msg.sender] = now;
+        deposits_multiplierLevel[msg.sender] = 1;
     }
 
     function upgradeMultiplierLevel()
         public
     {
-        Deposit storage deposit = deposits[msg.sender];
-        require(deposit.multiplierLevel > 0, "no deposit");
-        require(deposit.multiplierLevel < 3, "fully upgraded");
+        require(deposits_multiplierLevel[msg.sender] > 0, "no deposit");
+        require(deposits_multiplierLevel[msg.sender] < 3, "fully upgraded");
 
-        burnDepositSeconds(deposit);
+        burnDepositSeconds(msg.sender);
 
-        uint256 duration = now.sub(deposit.depositTimestamp);
+        uint256 duration = now.sub(deposits_depositTimestamp[msg.sender]);
 
-        if (deposit.multiplierLevel == 1 && duration >= 60 days) {
-            deposit.multiplierLevel = 3;
-            totalDepositedLevel3 = totalDepositedLevel3.add(deposit.lpTokensDeposited);
+        if (deposits_multiplierLevel[msg.sender] == 1 && duration >= 60 days) {
+            deposits_multiplierLevel[msg.sender] = 3;
+            totalDepositedLevel3 = totalDepositedLevel3.add(deposits_lpTokensDeposited[msg.sender]);
 
-        } else if (deposit.multiplierLevel == 1 && duration >= 30 days) {
-            deposit.multiplierLevel = 2;
-            totalDepositedLevel2 = totalDepositedLevel2.add(deposit.lpTokensDeposited);
+        } else if (deposits_multiplierLevel[msg.sender] == 1 && duration >= 30 days) {
+            deposits_multiplierLevel[msg.sender] = 2;
+            totalDepositedLevel2 = totalDepositedLevel2.add(deposits_lpTokensDeposited[msg.sender]);
 
-        } else if (deposit.multiplierLevel == 2 && duration >= 60 days) {
-            deposit.multiplierLevel = 3;
-            totalDepositedLevel3 = totalDepositedLevel3.add(deposit.lpTokensDeposited);
+        } else if (deposits_multiplierLevel[msg.sender] == 2 && duration >= 60 days) {
+            deposits_multiplierLevel[msg.sender] = 3;
+            totalDepositedLevel3 = totalDepositedLevel3.add(deposits_lpTokensDeposited[msg.sender]);
 
         } else {
             revert("ineligible");
@@ -132,9 +127,8 @@ contract Cascade is OwnableUpgradeSafe {
     {
         updateDepositSeconds();
 
-        Deposit storage deposit = deposits[msg.sender];
-        require(deposit.multiplierLevel > 0, "doesn't exist");
-        require(now > deposit.mostRecentBASEWithdrawal.add(minTimeBetweenWithdrawals), "too soon");
+        require(deposits_multiplierLevel[msg.sender] > 0, "doesn't exist");
+        require(now > deposits_mostRecentBASEWithdrawal[msg.sender].add(minTimeBetweenWithdrawals), "too soon");
 
         uint256 owed = owedTo(msg.sender);
         require(BASE.balanceOf(address(this)) >= owed, "available tokens");
@@ -149,16 +143,18 @@ contract Cascade is OwnableUpgradeSafe {
         updateDepositSeconds();
         claimBASE();
 
-        Deposit storage deposit = deposits[msg.sender];
-        require(deposit.multiplierLevel > 0, "doesn't exist");
-        require(deposit.lpTokensDeposited > 0, "no stake");
+        require(deposits_multiplierLevel[msg.sender] > 0, "doesn't exist");
+        require(deposits_lpTokensDeposited[msg.sender] > 0, "no stake");
 
-        bool ok = lpToken.transfer(msg.sender, deposit.lpTokensDeposited);
+        bool ok = lpToken.transfer(msg.sender, deposits_lpTokensDeposited[msg.sender]);
         require(ok, "transfer");
 
-        burnDepositSeconds(deposit);
+        burnDepositSeconds(msg.sender);
 
-        delete deposits[msg.sender];
+        delete deposits_lpTokensDeposited[msg.sender];
+        delete deposits_depositTimestamp[msg.sender];
+        delete deposits_multiplierLevel[msg.sender];
+        delete deposits_mostRecentBASEWithdrawal[msg.sender];
     }
 
     /**
@@ -176,20 +172,20 @@ contract Cascade is OwnableUpgradeSafe {
         lastAccountingUpdateTimestamp = now;
     }
 
-    function burnDepositSeconds(Deposit storage deposit)
+    function burnDepositSeconds(address user)
         private
     {
-        uint256 depositSecondsToBurn = now.sub(deposit.depositTimestamp).mul(deposit.lpTokensDeposited);
-        if (deposit.multiplierLevel == 1) {
-            totalDepositedLevel1 = totalDepositedLevel1.sub(deposit.lpTokensDeposited);
+        uint256 depositSecondsToBurn = now.sub(deposits_depositTimestamp[user]).mul(deposits_lpTokensDeposited[user]);
+        if (deposits_multiplierLevel[user] == 1) {
+            totalDepositedLevel1 = totalDepositedLevel1.sub(deposits_lpTokensDeposited[user]);
             totalDepositSecondsLevel1 = totalDepositSecondsLevel1.sub(depositSecondsToBurn);
 
-        } else if (deposit.multiplierLevel == 2) {
-            totalDepositedLevel2 = totalDepositedLevel2.sub(deposit.lpTokensDeposited);
+        } else if (deposits_multiplierLevel[user] == 2) {
+            totalDepositedLevel2 = totalDepositedLevel2.sub(deposits_lpTokensDeposited[user]);
             totalDepositSecondsLevel2 = totalDepositSecondsLevel2.sub(depositSecondsToBurn);
 
-        } else if (deposit.multiplierLevel == 3) {
-            totalDepositedLevel3 = totalDepositedLevel3.sub(deposit.lpTokensDeposited);
+        } else if (deposits_multiplierLevel[user] == 3) {
+            totalDepositedLevel3 = totalDepositedLevel3.sub(deposits_lpTokensDeposited[user]);
             totalDepositSecondsLevel3 = totalDepositSecondsLevel3.sub(depositSecondsToBurn);
         }
     }
@@ -210,10 +206,10 @@ contract Cascade is OwnableUpgradeSafe {
         )
     {
         return (
-            deposits[user].lpTokensDeposited,
-            deposits[user].depositTimestamp,
-            deposits[user].multiplierLevel,
-            deposits[user].mostRecentBASEWithdrawal,
+            deposits_lpTokensDeposited[user],
+            deposits_depositTimestamp[user],
+            deposits_multiplierLevel[user],
+            deposits_mostRecentBASEWithdrawal[user],
             owedTo(user)
         );
     }
@@ -223,12 +219,10 @@ contract Cascade is OwnableUpgradeSafe {
         view
         returns (uint256 amount)
     {
-        Deposit storage deposit = deposits[user];
-
         uint256 userDepositSeconds =
-            deposit.lpTokensDeposited
-              .mul(now.sub(deposit.depositTimestamp))
-              .mul(deposit.multiplierLevel);
+            deposits_lpTokensDeposited[user]
+              .mul(now.sub(deposits_depositTimestamp[user]))
+              .mul(deposits_multiplierLevel[user]);
 
         uint256 totalDepositSeconds =
             totalDepositSecondsLevel1

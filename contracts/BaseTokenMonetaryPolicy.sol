@@ -135,22 +135,19 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
         emit LogRebase(epoch, tokenPrice, mcap, supplyDelta, now);
     }
 
-    struct Charity {
-        bool exists;
-        uint256 index;
-        uint8 percentOnExpansion;
-        uint8 percentOnContraction;
-    }
-
     address[] public charityRecipients;
-    mapping(address => Charity) public charity;
-    Charity public totalCharity;
+    mapping(address => bool)    public charityExists;
+    mapping(address => uint256) public charityIndex;
+    mapping(address => uint8)   public charityPercentOnExpansion;
+    mapping(address => uint8)   public charityPercentOnContraction;
+    uint8 totalCharityPercentOnExpansion;
+    uint8 totalCharityPercentOnContraction;
 
     function applyCharity(int256 supplyDelta)
         private
     {
-        uint256 totalCharityPercent = uint256(supplyDelta < 0 ? totalCharity.percentOnContraction
-                                                              : totalCharity.percentOnExpansion);
+        uint256 totalCharityPercent = uint256(supplyDelta < 0 ? totalCharityPercentOnContraction
+                                                              : totalCharityPercentOnExpansion);
 
         uint256 totalCharitySupply = uint256(supplyDelta.abs()).mul(totalCharityPercent).div(100);
         uint256 supplyAfterRebase = (supplyDelta < 0) ? BASE.totalSupply().sub(uint256(supplyDelta.abs()))
@@ -163,8 +160,8 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
 
         for (uint256 i = 0; i < charityRecipients.length; i++) {
             address recipient = charityRecipients[i];
-            uint256 recipientPercent = supplyDelta < 0 ? charity[recipient].percentOnContraction
-                                                       : charity[recipient].percentOnExpansion;
+            uint256 recipientPercent = supplyDelta < 0 ? charityPercentOnContraction[recipient]
+                                                       : charityPercentOnExpansion[recipient];
 
             //
             // Determine the recipient's increase in shares:
@@ -183,18 +180,16 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
         external
         onlyOwner
     {
-        require(uint256(totalCharity.percentOnExpansion).add(percentOnExpansion) <= 100, "expansion");
-        require(uint256(totalCharity.percentOnContraction).add(percentOnContraction) <= 100, "contraction");
-        require(charity[addr].exists == false, "already exists");
+        require(uint256(totalCharityPercentOnExpansion).add(percentOnExpansion) <= 100, "expansion");
+        require(uint256(totalCharityPercentOnContraction).add(percentOnContraction) <= 100, "contraction");
+        require(charityExists[addr] == false, "already exists");
 
-        totalCharity.percentOnExpansion += percentOnExpansion;
-        totalCharity.percentOnContraction += percentOnContraction;
-        charity[addr] = Charity({
-            exists: true,
-            index: charityRecipients.length,
-            percentOnExpansion: percentOnExpansion,
-            percentOnContraction: percentOnContraction
-        });
+        totalCharityPercentOnExpansion += percentOnExpansion;
+        totalCharityPercentOnContraction += percentOnContraction;
+        charityExists[addr] = true;
+        charityIndex[addr] = charityRecipients.length;
+        charityPercentOnExpansion[addr] = percentOnExpansion;
+        charityPercentOnContraction[addr] = percentOnContraction;
         charityRecipients.push(addr);
     }
 
@@ -202,13 +197,19 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
         external
         onlyOwner
     {
-        require(charity[addr].exists, "doesn't exist");
+        require(charityExists[addr], "doesn't exist");
         require(charityRecipients.length > 0, "spacetime has shattered");
-        require(charityRecipients.length - 1 >= charity[addr].index, "too much cosmic radiation");
+        require(charityRecipients.length - 1 >= charityIndex[addr], "too much cosmic radiation");
 
-        charityRecipients[charity[addr].index] = charityRecipients[charityRecipients.length - 1];
+        totalCharityPercentOnExpansion -= charityPercentOnExpansion[addr];
+        totalCharityPercentOnContraction -= charityPercentOnContraction[addr];
+
+        charityRecipients[charityIndex[addr]] = charityRecipients[charityRecipients.length - 1];
         charityRecipients.pop();
-        delete charity[addr];
+        delete charityExists[addr];
+        delete charityIndex[addr];
+        delete charityPercentOnExpansion[addr];
+        delete charityPercentOnContraction[addr];
     }
 
     /**

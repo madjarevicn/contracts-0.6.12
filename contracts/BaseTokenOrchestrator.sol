@@ -21,6 +21,13 @@ contract BaseTokenOrchestrator is OwnableUpgradeSafe {
 
     BaseTokenMonetaryPolicy public policy;
 
+    function setMonetaryPolicy(address _policy)
+        public
+        onlyOwner
+    {
+        policy = BaseTokenMonetaryPolicy(_policy);
+    }
+
     /**
      * @param policy_ Address of the BaseToken policy.
      */

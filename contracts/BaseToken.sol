@@ -46,9 +46,6 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
     // Used for authentication
     address public monetaryPolicy;
 
-    bool private rebasePausedDeprecated;
-    bool private tokenPausedDeprecated;
-
     modifier validRecipient(address to) {
         require(to != address(0x0));
         require(to != address(this));
@@ -57,7 +54,8 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
 
     uint256 private constant DECIMALS = 9;
     uint256 private constant MAX_UINT256 = ~uint256(0);
-    uint256 private constant INITIAL_SHARES_SUPPLY = 50 * 10**6 * 10**DECIMALS;
+    uint256 private constant INITIAL_SUPPLY = 50 * 10**6 * 10**DECIMALS;
+    uint256 private constant INITIAL_SHARES = (MAX_UINT256 / (10 ** 36)) - ((MAX_UINT256 / (10 ** 36)) % INITIAL_SUPPLY);
 
     uint256 private _totalShares;
 
@@ -73,6 +71,23 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
     // This is denominated in BaseToken, because the shares-BASE conversion might change before
     // it's fully paid.
     mapping (address => mapping (address => uint256)) private _allowedBASE;
+
+    bool public transfersPaused;
+    bool public rebasesPaused;
+
+    function setTransfersPaused(bool _transfersPaused)
+        public
+        onlyOwner
+    {
+        transfersPaused = _transfersPaused;
+    }
+
+    function setRebasesPaused(bool _rebasesPaused)
+        public
+        onlyOwner
+    {
+        rebasesPaused = _rebasesPaused;
+    }
 
     /**
      * @param monetaryPolicy_ The address of the monetary policy contract to use for authentication.
@@ -95,6 +110,7 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
         returns (uint256)
     {
         require(msg.sender == monetaryPolicy, "only monetary policy");
+        require(!rebasesPaused, "rebases paused");
 
         if (supplyDelta == 0) {
             emit LogRebase(epoch, _totalSupply);
@@ -168,11 +184,8 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
         _setupDecimals(uint8(DECIMALS));
         __Ownable_init();
 
-        rebasePausedDeprecated = false;
-        tokenPausedDeprecated = false;
-
-        _totalShares = INITIAL_SHARES_SUPPLY;
-        _totalSupply = INITIAL_SHARES_SUPPLY;
+        _totalShares = INITIAL_SHARES;
+        _totalSupply = INITIAL_SUPPLY;
         _shareBalances[owner()] = _totalShares;
         _sharesPerBASE = _totalShares.div(_totalSupply);
 
@@ -232,6 +245,7 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
         returns (bool)
     {
         require(bannedUsers[msg.sender] == false, "you are banned");
+        require(!transfersPaused || msg.sender == owner(), "paused");
 
         uint256 shareValue = value.mul(_sharesPerBASE);
         _shareBalances[msg.sender] = _shareBalances[msg.sender].sub(shareValue);
@@ -268,6 +282,7 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
         returns (bool)
     {
         require(bannedUsers[msg.sender] == false, "you are banned");
+        require(!transfersPaused || msg.sender == owner(), "paused");
 
         _allowedBASE[from][msg.sender] = _allowedBASE[from][msg.sender].sub(value);
 

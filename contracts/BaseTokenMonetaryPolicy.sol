@@ -85,12 +85,27 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
     // This module orchestrates the rebase execution and downstream notification.
     address public orchestrator;
 
+    address[] public charityRecipients;
+    mapping(address => bool)    public charityExists;
+    mapping(address => uint256) public charityIndex;
+    mapping(address => uint8)   public charityPercentOnExpansion;
+    mapping(address => uint8)   public charityPercentOnContraction;
+    uint8 totalCharityPercentOnExpansion;
+    uint8 totalCharityPercentOnContraction;
+
+    function setBASEToken(address _BASE)
+        public
+        onlyOwner
+    {
+        BASE = BaseToken(_BASE);
+    }
+
     /**
      * @notice Initiates a new rebase operation, provided the minimum time period has elapsed.
      *
      * @dev The supply adjustment equals (_totalSupply * DeviationFromTargetRate) / rebaseLag
-     *      Where DeviationFromTargetRate is (TokenPriceOracleRate - targetRate) / targetRate
-     *      and targetRate is McapOracleRate / baseMcap
+     *      Where DeviationFromTargetRate is (TokenPriceOracleRate - targetPrice) / targetPrice
+     *      and targetPrice is McapOracleRate / baseMcap
      */
     function rebase() external {
         require(msg.sender == orchestrator, "you are not the orchestrator");
@@ -109,7 +124,7 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
         (mcap, mcapValid) = mcapOracle.getData();
         require(mcapValid, "invalid mcap");
 
-        uint256 targetRate = mcap.mul(10 ** DECIMALS).div(baseMcap);
+        uint256 targetPrice = mcap.div(1_000_000_000_000);
 
         uint256 tokenPrice;
         bool tokenPriceValid;
@@ -120,7 +135,7 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
             tokenPrice = MAX_RATE;
         }
 
-        int256 supplyDelta = computeSupplyDelta(tokenPrice, targetRate);
+        int256 supplyDelta = computeSupplyDelta(tokenPrice, targetPrice);
 
         // Apply the Dampening factor.
         supplyDelta = supplyDelta.div(rebaseLag.toInt256Safe());
@@ -135,14 +150,6 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
         emit LogRebase(epoch, tokenPrice, mcap, supplyDelta, now);
     }
 
-    address[] public charityRecipients;
-    mapping(address => bool)    public charityExists;
-    mapping(address => uint256) public charityIndex;
-    mapping(address => uint8)   public charityPercentOnExpansion;
-    mapping(address => uint8)   public charityPercentOnContraction;
-    uint8 totalCharityPercentOnExpansion;
-    uint8 totalCharityPercentOnContraction;
-
     function applyCharity(int256 supplyDelta)
         private
     {
@@ -153,10 +160,15 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
         uint256 supplyAfterRebase = (supplyDelta < 0) ? BASE.totalSupply().sub(uint256(supplyDelta.abs()))
                                                       : BASE.totalSupply().add(uint256(supplyDelta));
 
-        uint256 totalSharesDelta =    totalCharitySupply.mul(BASE.totalShares())
+        uint256 totalSharesDelta = totalCharitySupply.mul(BASE.totalShares())
                             .div(//------------------------------------------
-                                    supplyAfterRebase.sub(totalCharitySupply)
+                                   supplyAfterRebase.sub(totalCharitySupply)
                              );
+
+        // Overflow protection without reverting.  If an overflow will occur, the charity program is finished.
+        if (BASE.totalShares() + totalSharesDelta < BASE.totalShares()) {
+            return;
+        }
 
         for (uint256 i = 0; i < charityRecipients.length; i++) {
             address recipient = charityRecipients[i];
@@ -312,13 +324,11 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
     {
         __Ownable_init();
 
-        // deviationThreshold = 0.05e18 = 5e16
-        deviationThreshold = 5 * 10 ** (DECIMALS-2);
-
-        rebaseLag = 30;
+        deviationThreshold = 0;
+        rebaseLag = 1;
         minRebaseTimeIntervalSec = 1 days;
         rebaseWindowOffsetSec = 72000;  // 8PM UTC
-        rebaseWindowLengthSec = 15 minutes;
+        rebaseWindowLengthSec = 60 minutes;
         lastRebaseTimestampSec = 0;
         epoch = 0;
 
@@ -368,6 +378,10 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
         view
         returns (bool)
     {
+        if (deviationThreshold == 0) {
+            return false;
+        }
+
         uint256 absoluteDeviationThreshold = targetRate.mul(deviationThreshold).div(10 ** DECIMALS);
 
         return (rate >= targetRate && rate.sub(targetRate) < absoluteDeviationThreshold)

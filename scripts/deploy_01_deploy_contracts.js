@@ -12,7 +12,7 @@ async function main() {
     saveContractAddress(bre.network.name, 'baseToken', baseToken.address)
 
     const BaseTokenMonetaryPolicy = await ethers.getContractFactory('BaseTokenMonetaryPolicy')
-    const baseTokenMonetaryPolicy = await upgrades.deployProxy(BaseTokenMonetaryPolicy, [baseToken.address, '483703019126'])
+    const baseTokenMonetaryPolicy = await upgrades.deployProxy(BaseTokenMonetaryPolicy, [baseToken.address, '483703019126000000000000000000'])
     await baseTokenMonetaryPolicy.deployed()
     console.log('BaseTokenMonetaryPolicy deployed to:', baseTokenMonetaryPolicy.address)
     saveContractAddress(bre.network.name, 'baseTokenMonetaryPolicy', baseTokenMonetaryPolicy.address)
@@ -34,19 +34,6 @@ async function main() {
     await (await baseTokenMonetaryPolicy.setOrchestrator(baseTokenOrchestrator.address)).wait()
     console.log('BaseTokenMonetaryPolicy.setOrchestrator(', baseTokenOrchestrator.address, ') succeeded')
 
-    // const externalContracts = {
-    //     mainnet: {
-    //         mcapOracle:  '0xEC8761a0A73c34329CA5B1D3Dc7eD07F30e836e2',
-    //         priceOracle: '',
-    //         lpToken:     '',
-    //     },
-    //     kovan: {
-    //         mcapOracle:  '0xcD1AA31a9fDD89D21c0104DB6f6A46C8FE271D3b',
-    //         priceOracle: '0x3C71Acc6F1ed1cF67b6a77345F8ee0467E94cD40',
-    //         lpToken:     '0x141819E5aB1FA056fe5da5dE735Ba1E82D1A7d53',
-    //     },
-    // }
-
     const contracts = getSavedContractAddresses()[bre.network.name]
 
     await (await baseTokenMonetaryPolicy.setMcapOracle(contracts.mcapOracle)).wait()
@@ -55,6 +42,8 @@ async function main() {
     console.log('BaseTokenMonetaryPolicy.setTokenPriceOracle(', contracts.tokenPriceOracle, ') succeeded')
     await (await cascade.setLPToken(contracts.lpToken)).wait()
     console.log('Cascade.setLPToken(', contracts.lpToken, ') succeeded')
+    await (await cascade.setBASEToken(contracts.baseToken)).wait()
+    console.log('Cascade.setBASEToken(', contracts.baseToken, ') succeeded')
 }
 
 

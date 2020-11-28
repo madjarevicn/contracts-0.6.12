@@ -44,7 +44,7 @@ contract Cascade is OwnableUpgradeSafe {
         lpToken = IERC20(_lpToken);
     }
 
-    function setBaseToken(address _baseToken)
+    function setBASEToken(address _baseToken)
         public
         onlyOwner
     {

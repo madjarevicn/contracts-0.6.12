@@ -12,7 +12,7 @@ async function main() {
     saveContractAddress(bre.network.name, 'baseToken', baseToken.address)
 
     const BaseTokenMonetaryPolicy = await ethers.getContractFactory('BaseTokenMonetaryPolicy')
-    const baseTokenMonetaryPolicy = await upgrades.deployProxy(BaseTokenMonetaryPolicy, [baseToken.address, '483703019126000000000000000000'])
+    const baseTokenMonetaryPolicy = await upgrades.deployProxy(BaseTokenMonetaryPolicy, [baseToken.address])
     await baseTokenMonetaryPolicy.deployed()
     console.log('BaseTokenMonetaryPolicy deployed to:', baseTokenMonetaryPolicy.address)
     saveContractAddress(bre.network.name, 'baseTokenMonetaryPolicy', baseTokenMonetaryPolicy.address)

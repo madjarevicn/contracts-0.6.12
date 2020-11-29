@@ -85,10 +85,10 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
     address[] public charityRecipients;
     mapping(address => bool)    public charityExists;
     mapping(address => uint256) public charityIndex;
-    mapping(address => uint8)   public charityPercentOnExpansion;
-    mapping(address => uint8)   public charityPercentOnContraction;
-    uint8 totalCharityPercentOnExpansion;
-    uint8 totalCharityPercentOnContraction;
+    mapping(address => uint256) public charityPercentOnExpansion;
+    mapping(address => uint256) public charityPercentOnContraction;
+    uint256 public totalCharityPercentOnExpansion;
+    uint256 public totalCharityPercentOnContraction;
 
     function setBASEToken(address _BASE)
         public
@@ -150,8 +150,8 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
     function applyCharity(int256 supplyDelta)
         private
     {
-        uint256 totalCharityPercent = uint256(supplyDelta < 0 ? totalCharityPercentOnContraction
-                                                              : totalCharityPercentOnExpansion);
+        uint256 totalCharityPercent = supplyDelta < 0 ? totalCharityPercentOnContraction
+                                                      : totalCharityPercentOnExpansion;
 
         uint256 totalCharitySupply = uint256(supplyDelta.abs()).mul(totalCharityPercent).div(100);
         uint256 supplyAfterRebase = (supplyDelta < 0) ? BASE.totalSupply().sub(uint256(supplyDelta.abs()))
@@ -175,25 +175,17 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
                 continue;
             }
 
-            //
-            // Determine the recipient's increase in shares:
-            //     Recipient's % share of charity = recipient % / total %
-            //     Increase in shares             = totalSharesDelta / recipient's % share of charity
-            //
-            // However, in order to preserve precision, we invert the calculation to:
-            //     Increase in shares             = totalSharesDelta * total % / recipient %
-            //
-            uint256 recipientSharesDelta = totalSharesDelta.mul(totalCharityPercent).div(recipientPercent);
+            uint256 recipientSharesDelta = totalSharesDelta.mul(recipientPercent).div(totalCharityPercent);
             BASE.mintShares(recipient, recipientSharesDelta);
         }
     }
 
-    function addCharityRecipient(address addr, uint8 percentOnExpansion, uint8 percentOnContraction)
+    function addCharityRecipient(address addr, uint256 percentOnExpansion, uint256 percentOnContraction)
         external
         onlyOwner
     {
-        require(uint256(totalCharityPercentOnExpansion).add(percentOnExpansion) <= 100, "expansion");
-        require(uint256(totalCharityPercentOnContraction).add(percentOnContraction) <= 100, "contraction");
+        require(totalCharityPercentOnExpansion.add(percentOnExpansion) <= 100, "expansion");
+        require(totalCharityPercentOnContraction.add(percentOnContraction) <= 100, "contraction");
         require(charityExists[addr] == false, "already exists");
 
         totalCharityPercentOnExpansion += percentOnExpansion;
@@ -213,8 +205,8 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
         require(charityRecipients.length > 0, "spacetime has shattered");
         require(charityRecipients.length - 1 >= charityIndex[addr], "too much cosmic radiation");
 
-        totalCharityPercentOnExpansion -= charityPercentOnExpansion[addr];
-        totalCharityPercentOnContraction -= charityPercentOnContraction[addr];
+        totalCharityPercentOnExpansion = totalCharityPercentOnExpansion.sub(charityPercentOnExpansion[addr]);
+        totalCharityPercentOnContraction = totalCharityPercentOnContraction.sub(charityPercentOnContraction[addr]);
 
         charityRecipients[charityIndex[addr]] = charityRecipients[charityRecipients.length - 1];
         charityRecipients.pop();

@@ -54,14 +54,11 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
 
     uint256 private constant DECIMALS = 9;
     uint256 private constant MAX_UINT256 = ~uint256(0);
-    uint256 private constant INITIAL_SUPPLY = 50 * 10**6 * 10**DECIMALS;
+    uint256 private constant INITIAL_SUPPLY = 8_795_645 * 10**DECIMALS;
     uint256 private constant INITIAL_SHARES = (MAX_UINT256 / (10 ** 36)) - ((MAX_UINT256 / (10 ** 36)) % INITIAL_SUPPLY);
-
-    uint256 private _totalShares;
-
-    // MAX_SUPPLY = maximum integer < (sqrt(4*totalShares + 1) - 1) / 2
     uint256 private constant MAX_SUPPLY = ~uint128(0);  // (2^128) - 1
 
+    uint256 private _totalShares;
     uint256 private _totalSupply;
     uint256 private _sharesPerBASE;
     mapping(address => uint256) private _shareBalances;

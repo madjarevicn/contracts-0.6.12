@@ -44,9 +44,6 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
     // (eg) An oracle value of 1.5e18 it would mean 1 BASE is trading for $1.50.
     IOracle public tokenPriceOracle;
 
-    // Market cap value at the time of launch, as an 18 decimal fixed point number.
-    uint256 private baseMcap;
-
     // If the current exchange rate is within this fractional distance from the target, no supply
     // update is performed. Fixed point number--same format as the rate.
     // (ie) abs(rate - targetRate) / targetRate < deviationThreshold, then no supply change.
@@ -174,6 +171,9 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
             address recipient = charityRecipients[i];
             uint256 recipientPercent = supplyDelta < 0 ? charityPercentOnContraction[recipient]
                                                        : charityPercentOnExpansion[recipient];
+            if (recipientPercent == 0) {
+                continue;
+            }
 
             //
             // Determine the recipient's increase in shares:
@@ -318,7 +318,7 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
      *      It is called at the time of contract creation to invoke parent class initializers and
      *      initialize the contract's state variables.
      */
-    function initialize(BaseToken BASE_, uint256 baseMcap_)
+    function initialize(BaseToken BASE_)
         public
         initializer
     {
@@ -333,7 +333,6 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
         epoch = 0;
 
         BASE = BASE_;
-        baseMcap = baseMcap_;
     }
 
     /**

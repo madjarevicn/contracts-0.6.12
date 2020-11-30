@@ -135,6 +135,8 @@ contract Cascade is OwnableUpgradeSafe {
 
         bool ok = BASE.transfer(msg.sender, owed);
         require(ok, "transfer");
+
+        deposits_mostRecentBASEWithdrawal[msg.sender] = now;
     }
 
     function withdrawLPTokens()

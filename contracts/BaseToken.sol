@@ -72,11 +72,24 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
     bool public transfersPaused;
     bool public rebasesPaused;
 
+    mapping(address => bool) public transferPauseExemptList;
+
     function setTransfersPaused(bool _transfersPaused)
         public
         onlyOwner
     {
         transfersPaused = _transfersPaused;
+    }
+
+    function setTransferPauseExempt(address user, bool exempt)
+        public
+        onlyOwner
+    {
+        if (exempt) {
+            transferPauseExemptList[user] = true;
+        } else {
+            delete transferPauseExemptList[user];
+        }
     }
 
     function setRebasesPaused(bool _rebasesPaused)
@@ -242,7 +255,7 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
         returns (bool)
     {
         require(bannedUsers[msg.sender] == false, "you are banned");
-        require(!transfersPaused || msg.sender == owner(), "paused");
+        require(!transfersPaused || transferPauseExemptList[msg.sender], "paused");
 
         uint256 shareValue = value.mul(_sharesPerBASE);
         _shareBalances[msg.sender] = _shareBalances[msg.sender].sub(shareValue);
@@ -279,7 +292,7 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
         returns (bool)
     {
         require(bannedUsers[msg.sender] == false, "you are banned");
-        require(!transfersPaused || msg.sender == owner(), "paused");
+        require(!transfersPaused || transferPauseExemptList[msg.sender], "paused");
 
         _allowedBASE[from][msg.sender] = _allowedBASE[from][msg.sender].sub(value);
 

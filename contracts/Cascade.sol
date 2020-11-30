@@ -92,8 +92,7 @@ contract Cascade is OwnableUpgradeSafe {
         uint256 allowance = lpToken.allowance(msg.sender, address(this));
         require(amount <= allowance, "allowance");
 
-
-        if (deposits_multiplierLevel[msg.sender] > 1) {
+        if (deposits_multiplierLevel[msg.sender] > 0) {
             burnDepositSeconds(msg.sender);
         }
 

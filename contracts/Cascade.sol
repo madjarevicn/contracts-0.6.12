@@ -69,6 +69,17 @@ contract Cascade is OwnableUpgradeSafe {
         require(ok, "transfer");
     }
 
+    function rescueMistakenlySentTokens(address token, address recipient, uint256 amount)
+        public
+        onlyOwner
+    {
+        require(recipient != address(0x0), "bad recipient");
+        require(amount > 0, "bad amount");
+
+        bool ok = IERC20(token).transfer(recipient, amount);
+        require(ok, "transfer");
+    }
+
     /**
      * Public methods
      */

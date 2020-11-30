@@ -81,8 +81,6 @@ contract Cascade is OwnableUpgradeSafe {
         uint256 allowance = lpToken.allowance(msg.sender, address(this));
         require(amount <= allowance, "allowance");
 
-        bool ok = lpToken.transferFrom(msg.sender, address(this), amount);
-        require(ok, "transferFrom");
 
         if (deposits_multiplierLevel[msg.sender] > 1) {
             burnDepositSeconds(msg.sender);
@@ -93,6 +91,9 @@ contract Cascade is OwnableUpgradeSafe {
         deposits_lpTokensDeposited[msg.sender] = deposits_lpTokensDeposited[msg.sender].add(amount);
         deposits_depositTimestamp[msg.sender] = now;
         deposits_multiplierLevel[msg.sender] = 1;
+
+        bool ok = lpToken.transferFrom(msg.sender, address(this), amount);
+        require(ok, "transferFrom");
     }
 
     function upgradeMultiplierLevel()
@@ -133,10 +134,10 @@ contract Cascade is OwnableUpgradeSafe {
         uint256 owed = owedTo(msg.sender);
         require(BASE.balanceOf(address(this)) >= owed, "available tokens");
 
+        deposits_mostRecentBASEWithdrawal[msg.sender] = now;
+
         bool ok = BASE.transfer(msg.sender, owed);
         require(ok, "transfer");
-
-        deposits_mostRecentBASEWithdrawal[msg.sender] = now;
     }
 
     function withdrawLPTokens()
@@ -148,15 +149,17 @@ contract Cascade is OwnableUpgradeSafe {
         require(deposits_multiplierLevel[msg.sender] > 0, "doesn't exist");
         require(deposits_lpTokensDeposited[msg.sender] > 0, "no stake");
 
-        bool ok = lpToken.transfer(msg.sender, deposits_lpTokensDeposited[msg.sender]);
-        require(ok, "transfer");
-
         burnDepositSeconds(msg.sender);
+
+        uint256 deposited = deposits_lpTokensDeposited[msg.sender];
 
         delete deposits_lpTokensDeposited[msg.sender];
         delete deposits_depositTimestamp[msg.sender];
         delete deposits_multiplierLevel[msg.sender];
         delete deposits_mostRecentBASEWithdrawal[msg.sender];
+
+        bool ok = lpToken.transfer(msg.sender, deposited);
+        require(ok, "transfer");
     }
 
     /**

@@ -139,7 +139,7 @@ contract Cascade is OwnableUpgradeSafe {
         updateDepositSeconds();
 
         require(deposits_multiplierLevel[msg.sender] > 0, "doesn't exist");
-        require(now > deposits_mostRecentBASEWithdrawal[msg.sender].add(minTimeBetweenWithdrawals), "too soon");
+        require(allowedToWithdraw(msg.sender), "too soon");
 
         uint256 owed = owedTo(msg.sender);
         require(BASE.balanceOf(address(this)) >= owed, "available tokens");
@@ -158,6 +158,7 @@ contract Cascade is OwnableUpgradeSafe {
 
         require(deposits_multiplierLevel[msg.sender] > 0, "doesn't exist");
         require(deposits_lpTokensDeposited[msg.sender] > 0, "no stake");
+        require(allowedToWithdraw(msg.sender), "too soon");
 
         burnDepositSeconds(msg.sender);
 
@@ -213,20 +214,67 @@ contract Cascade is OwnableUpgradeSafe {
         public
         view
         returns (
-            uint256 lpTokensDeposited,
-            uint256 depositTimestamp,
-            uint8   multiplierLevel,
-            uint256 mostRecentBASEWithdrawal,
-            uint256 owed
+            uint256 _lpTokensDeposited,
+            uint256 _depositTimestamp,
+            uint8   _multiplierLevel,
+            uint256 _mostRecentBASEWithdrawal,
+            uint256 _userDepositSeconds,
+            uint256 _totalDepositSeconds,
+            uint256 _owed
         )
     {
+        uint256 delta = now.sub(lastAccountingUpdateTimestamp);
+        _totalDepositSeconds = totalDepositSecondsLevel1.add(totalDepositedLevel1.mul(delta))
+                                  .add(totalDepositSecondsLevel2.add(totalDepositedLevel2.mul(delta)).mul(2))
+                                  .add(totalDepositSecondsLevel3.add(totalDepositedLevel3.mul(delta)).mul(3));
+
         return (
             deposits_lpTokensDeposited[user],
             deposits_depositTimestamp[user],
             deposits_multiplierLevel[user],
             deposits_mostRecentBASEWithdrawal[user],
+            userDepositSeconds(user),
+            _totalDepositSeconds,
             owedTo(user)
         );
+    }
+
+    function allowedToWithdraw(address user)
+        public
+        view
+        returns (bool)
+    {
+        return deposits_mostRecentBASEWithdrawal[user] == 0
+                ? now > deposits_depositTimestamp[user].add(minTimeBetweenWithdrawals)
+                : now > deposits_mostRecentBASEWithdrawal[user].add(minTimeBetweenWithdrawals);
+    }
+
+    function userDepositSeconds(address user)
+        public
+        view
+        returns (uint256)
+    {
+        return deposits_lpTokensDeposited[user]
+                  .mul(now.sub(deposits_depositTimestamp[user]))
+                  .mul(deposits_multiplierLevel[user]);
+    }
+
+    function totalDepositSeconds()
+        public
+        view
+        returns (uint256)
+    {
+        return totalDepositSecondsLevel1
+                  .add(totalDepositSecondsLevel2.mul(2))
+                  .add(totalDepositSecondsLevel3.mul(3));
+    }
+
+    function rewardsPool()
+        public
+        view
+        returns (uint256)
+    {
+        return BASE.balanceOf(address(this));
     }
 
     function owedTo(address user)
@@ -234,18 +282,6 @@ contract Cascade is OwnableUpgradeSafe {
         view
         returns (uint256 amount)
     {
-        uint256 userDepositSeconds =
-            deposits_lpTokensDeposited[user]
-              .mul(now.sub(deposits_depositTimestamp[user]))
-              .mul(deposits_multiplierLevel[user]);
-
-        uint256 totalDepositSeconds =
-            totalDepositSecondsLevel1
-              .add(totalDepositSecondsLevel2.mul(2))
-              .add(totalDepositSecondsLevel3.mul(3));
-
-        uint256 rewardsPool = BASE.balanceOf(address(this));
-
-        return (rewardsPool.mul(userDepositSeconds)).div(totalDepositSeconds);
+        return rewardsPool().mul(userDepositSeconds(user)).div(totalDepositSeconds());
     }
 }

@@ -219,8 +219,7 @@ contract Cascade is OwnableUpgradeSafe {
             uint8   _multiplierLevel,
             uint256 _mostRecentBASEWithdrawal,
             uint256 _userDepositSeconds,
-            uint256 _totalDepositSeconds,
-            uint256 _owed
+            uint256 _totalDepositSeconds
         )
     {
         uint256 delta = now.sub(lastAccountingUpdateTimestamp);
@@ -234,8 +233,7 @@ contract Cascade is OwnableUpgradeSafe {
             deposits_multiplierLevel[user],
             deposits_mostRecentBASEWithdrawal[user],
             userDepositSeconds(user),
-            _totalDepositSeconds,
-            owedTo(user)
+            _totalDepositSeconds
         );
     }
 

@@ -320,6 +320,8 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
         override
         returns (bool)
     {
+        require(!transfersPaused || transferPauseExemptList[msg.sender], "paused");
+
         _allowedBASE[msg.sender][spender] = value;
         emit Approval(msg.sender, spender, value);
         return true;
@@ -337,6 +339,8 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
         override
         returns (bool)
     {
+        require(!transfersPaused || transferPauseExemptList[msg.sender], "paused");
+
         _allowedBASE[msg.sender][spender] = _allowedBASE[msg.sender][spender].add(addedValue);
         emit Approval(msg.sender, spender, _allowedBASE[msg.sender][spender]);
         return true;
@@ -353,6 +357,8 @@ contract BaseToken is ERC20UpgradeSafe, ERC677Token, OwnableUpgradeSafe {
         override
         returns (bool)
     {
+        require(!transfersPaused || transferPauseExemptList[msg.sender], "paused");
+
         uint256 oldValue = _allowedBASE[msg.sender][spender];
         if (subtractedValue >= oldValue) {
             _allowedBASE[msg.sender][spender] = 0;

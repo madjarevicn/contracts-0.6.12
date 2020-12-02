@@ -137,6 +137,11 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
         // Apply the Dampening factor.
         supplyDelta = supplyDelta.div(rebaseLag.toInt256Safe());
 
+        if (supplyDelta == 0) {
+            emit LogRebase(epoch, tokenPrice, mcap, supplyDelta, now);
+            return;
+        }
+
         if (supplyDelta > 0 && BASE.totalSupply().add(uint256(supplyDelta)) > MAX_SUPPLY) {
             supplyDelta = (MAX_SUPPLY.sub(BASE.totalSupply())).toInt256Safe();
         }
@@ -188,8 +193,8 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
         require(totalCharityPercentOnContraction.add(percentOnContraction) <= 100, "contraction");
         require(charityExists[addr] == false, "already exists");
 
-        totalCharityPercentOnExpansion += percentOnExpansion;
-        totalCharityPercentOnContraction += percentOnContraction;
+        totalCharityPercentOnExpansion = totalCharityPercentOnExpansion.add(percentOnExpansion);
+        totalCharityPercentOnContraction = totalCharityPercentOnContraction.add(percentOnContraction);
         charityExists[addr] = true;
         charityIndex[addr] = charityRecipients.length;
         charityPercentOnExpansion[addr] = percentOnExpansion;
@@ -319,7 +324,7 @@ contract BaseTokenMonetaryPolicy is OwnableUpgradeSafe {
         deviationThreshold = 0;
         rebaseLag = 1;
         minRebaseTimeIntervalSec = 1 days;
-        rebaseWindowOffsetSec = 72000;  // 8PM UTC
+        rebaseWindowOffsetSec = 79200;  // 10PM UTC
         rebaseWindowLengthSec = 60 minutes;
         lastRebaseTimestampSec = 0;
         epoch = 0;

@@ -1,6 +1,6 @@
 .envrc
 node_modules
-
+.idea
 #Buidler files
 cache
 artifacts
